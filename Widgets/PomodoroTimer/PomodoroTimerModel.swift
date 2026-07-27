@@ -72,6 +72,7 @@ final class PomodoroTimerModel: ObservableObject {
     private var endDate: Date?
     private var ticker: Timer?
     private var defaultsObserver: NSObjectProtocol?
+    private var dayChangeObserver: NSObjectProtocol?
 
     init(widgetId: String) {
         self.widgetId = widgetId
@@ -86,12 +87,23 @@ final class PomodoroTimerModel: ObservableObject {
         ) { [weak self] _ in
             self?.settingsDidChange()
         }
+
+        dayChangeObserver = NotificationCenter.default.addObserver(
+            forName: .NSCalendarDayChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.normalizeDayIfNeeded()
+        }
     }
 
     deinit {
         ticker?.invalidate()
         if let defaultsObserver {
             NotificationCenter.default.removeObserver(defaultsObserver)
+        }
+        if let dayChangeObserver {
+            NotificationCenter.default.removeObserver(dayChangeObserver)
         }
     }
 
@@ -352,9 +364,17 @@ final class PomodoroTimerModel: ObservableObject {
         let today = Self.dayKey()
         let stored = UserDefaults.standard.string(forKey: Self.dayKeyStorageKey(widgetId))
         guard stored != today else { return }
+        resetForNewDay()
+    }
+
+    private func resetForNewDay() {
+        stopTicker()
+        phase = .focus
+        runState = .idle
+        endDate = nil
         completedToday = 0
         cycleFocusCount = 0
-        UserDefaults.standard.set(today, forKey: Self.dayKeyStorageKey(widgetId))
+        configureCurrentPhase()
         persist()
     }
 
@@ -414,8 +434,7 @@ final class PomodoroTimerModel: ObservableObject {
         cycleFocusCount = max(0, saved.cycleFocusCount)
 
         if saved.dayKey != Self.dayKey() {
-            completedToday = 0
-            cycleFocusCount = 0
+            resetForNewDay()
         }
     }
 
