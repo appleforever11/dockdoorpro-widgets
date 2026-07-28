@@ -439,10 +439,33 @@ final class PomodoroTimerModel: ObservableObject {
     }
 
     private func playCompletionSound() {
-        if let sound = NSSound(named: NSSound.Name("Glass")) {
-            sound.play()
-        } else {
-            NSSound.beep()
+        // A single system chime is easy to miss when the user is focused or
+        // listening at a low volume. Use a short, distinctive three-tone
+        // pattern that remains bounded and respects the system sound volume.
+        let pattern: [(delay: TimeInterval, name: String)] = [
+            (0, "Hero"),
+            (1.35, "Ping"),
+            (3.0, "Hero"),
+        ]
+
+        for tone in pattern {
+            let playTone = {
+                if let sound = NSSound(named: NSSound.Name(tone.name)) {
+                    sound.volume = 1
+                    sound.play()
+                } else {
+                    NSSound.beep()
+                }
+            }
+
+            if tone.delay == 0 {
+                playTone()
+            } else {
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + tone.delay,
+                    execute: playTone
+                )
+            }
         }
     }
 
