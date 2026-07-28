@@ -77,14 +77,16 @@ struct SystemMonitorPanel: View {
                         symbol: "cpu",
                         processes: Array(monitor.topCPUProcesses.prefix(processLimit)),
                         value: { SystemValueFormatter.processPercent($0.value) },
-                        color: SystemMonitorPalette.cpuUser
+                        color: SystemMonitorPalette.cpuUser,
+                        reflectionFromTrailing: false
                     )
                     processSection(
                         title: "Top Memory Processes",
                         symbol: "memorychip",
                         processes: Array(monitor.topMemoryProcesses.prefix(processLimit)),
                         value: { SystemValueFormatter.bytes($0.value) },
-                        color: SystemMonitorPalette.memoryCompressed
+                        color: SystemMonitorPalette.memoryCompressed,
+                        reflectionFromTrailing: true
                     )
                 }
                 .frame(width: panelCardWidth, alignment: .leading)
@@ -142,7 +144,7 @@ struct SystemMonitorPanel: View {
 
             Rectangle()
                 .fill(Color.primary.opacity(0.08))
-                .frame(width: 0.5, height: 96)
+                .frame(width: 0.5, height: 98)
 
             panelMetricRing(
                 title: "Memory",
@@ -151,30 +153,17 @@ struct SystemMonitorPanel: View {
             )
         }
         .background(
-            ZStack {
-                SystemGlassCard()
-
-                HStack(spacing: 0) {
-                    LinearGradient(
-                        colors: [SystemMonitorPalette.cpuUser.opacity(0.11), Color.clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    LinearGradient(
-                        colors: [Color.clear, SystemMonitorPalette.memoryCompressed.opacity(0.11)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 9))
-            }
+            SystemGlassCard(
+                leadingTint: SystemMonitorPalette.cpuUser,
+                trailingTint: SystemMonitorPalette.memoryCompressed
+            )
         )
     }
 
     private func panelMetricRing(title: String, value: String, segments: [UsageSegment]) -> some View {
         MetricRingView(title: title, value: value, segments: segments, size: 88)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .padding(.vertical, 11)
     }
 
     private var history: some View {
@@ -219,19 +208,12 @@ struct SystemMonitorPanel: View {
             SystemHistoryChart(data: data, color: color)
                 .frame(height: 48)
         }
-        .padding(9)
+        .padding(11)
         .background(
-            ZStack {
-                SystemGlassCard()
-                LinearGradient(
-                    colors: reflectionFromTrailing
-                        ? [Color.clear, color.opacity(0.10)]
-                        : [color.opacity(0.10), Color.clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 9))
-            }
+            SystemGlassCard(
+                leadingTint: reflectionFromTrailing ? nil : color,
+                trailingTint: reflectionFromTrailing ? color : nil
+            )
         )
     }
 
@@ -261,7 +243,9 @@ struct SystemMonitorPanel: View {
                     valueColor: temperatureColor
                 )
             }
-            .background(SystemGlassCard())
+            .background(
+                SystemGlassCard(leadingTint: SystemMonitorPalette.cpuUser)
+            )
         }
     }
 
@@ -323,7 +307,9 @@ struct SystemMonitorPanel: View {
                 }
             }
             .padding(11)
-            .background(SystemGlassCard())
+            .background(
+                SystemGlassCard(trailingTint: SystemMonitorPalette.memoryCompressed)
+            )
         }
     }
 
@@ -332,7 +318,8 @@ struct SystemMonitorPanel: View {
         symbol: String,
         processes: [ProcessMetric],
         value: @escaping (ProcessMetric) -> String,
-        color: Color
+        color: Color,
+        reflectionFromTrailing: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             sectionLabel(title)
@@ -342,8 +329,13 @@ struct SystemMonitorPanel: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(12)
-                    .background(SystemGlassCard())
+                    .padding(11)
+                    .background(
+                        SystemGlassCard(
+                            leadingTint: reflectionFromTrailing ? nil : color,
+                            trailingTint: reflectionFromTrailing ? color : nil
+                        )
+                    )
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(processes.enumerated()), id: \.element.id) { index, process in
@@ -361,7 +353,12 @@ struct SystemMonitorPanel: View {
                         }
                     }
                 }
-                .background(SystemGlassCard())
+                .background(
+                    SystemGlassCard(
+                        leadingTint: reflectionFromTrailing ? nil : color,
+                        trailingTint: reflectionFromTrailing ? color : nil
+                    )
+                )
             }
         }
     }
@@ -441,7 +438,7 @@ struct SystemMonitorPanel: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.primary.opacity(0.07))
+            .fill(Color.primary.opacity(0.08))
             .frame(height: 0.5)
     }
 
@@ -563,7 +560,7 @@ private struct ProcessUsageRow: View {
                     .foregroundStyle(.primary)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 11)
         .padding(.vertical, 7)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }

@@ -232,11 +232,20 @@ struct SystemHistoryChart: View {
 
 struct SystemGlassCard: View {
     var cornerRadius: CGFloat = 9
+    var leadingTint: Color? = nil
+    var trailingTint: Color? = nil
+    var tintOpacity = 0.10
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: cornerRadius)
                 .fill(Color.primary.opacity(0.05))
+
+            if let tintGradient {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(tintGradient)
+            }
+
             RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(
                     LinearGradient(
@@ -247,6 +256,38 @@ struct SystemGlassCard: View {
                     lineWidth: 0.5
                 )
         }
+    }
+
+    private var tintGradient: LinearGradient? {
+        if let leadingTint, let trailingTint {
+            return LinearGradient(
+                colors: [
+                    leadingTint.opacity(tintOpacity),
+                    Color.clear,
+                    trailingTint.opacity(tintOpacity),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+
+        if let leadingTint {
+            return LinearGradient(
+                colors: [leadingTint.opacity(tintOpacity), Color.clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+
+        if let trailingTint {
+            return LinearGradient(
+                colors: [Color.clear, trailingTint.opacity(tintOpacity)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+
+        return nil
     }
 }
 
