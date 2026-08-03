@@ -1,9 +1,9 @@
 {
     "id": "codex-project-tracker",
-    "name": "Codex Usage",
+    "name": "Codex Tracker",
     "author": "appleforever11",
-    "description": "Tracks Codex usage countdowns, credits, recent chats, tasks, and local Codex defaults from DockDoor Pro.",
-    "iconSymbol": "gauge.with.dots.needle.67percent",
+    "description": "Shows recent Codex projects and chat activity",
+    "iconSymbol": "bubble.left.and.text.bubble.right.fill",
     "orientations": ["horizontal", "vertical"],
     "principalClass": "CodexProjectTrackerPlugin",
     "sources": ["CodexProjectTracker.swift"]
