@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.2.0 - Max Reasoning
+
+- Replaced the High reasoning cell with Max and write Codex's native `max` reasoning value.
+- Normalize legacy `high` and `xhigh` defaults to Max so upgrades retain an active reasoning selection.
+- Retained the responsive six-cell defaults layout and existing Fast mode behavior.
+
 ## 3.1.0 - Fast Mode Toggle
 
 - Added a one-click lightning toggle directly to the left of the rainbow-ring control.

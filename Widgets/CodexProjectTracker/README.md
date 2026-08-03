@@ -2,7 +2,7 @@
 
 A lightweight DockDoor Pro widget for keeping Codex usage, credit balance, recent chats, project activity, and local Codex defaults visible from the dock.
 
-**Current release:** `3.1.0`
+**Current release:** `3.2.0`
 
 **Marketplace PR:** [ejbills/dockdoorpro-widgets#20](https://github.com/ejbills/dockdoorpro-widgets/pull/20)
 
@@ -22,7 +22,7 @@ Use this square cover image as the first Discord attachment when announcing the 
 - Rotating dock cards for account limits, selected model, task count, and chat count.
 - Panel view with credits, general usage, model-specific limits, task/chat totals, and recent Codex sessions.
 - Clickable recent chats that open Codex tasks through `codex://threads/<session-id>` when a session id is available.
-- Local model and reasoning default controls for Luna, Sol, Spark, Instant, Medium, and High.
+- Local model and reasoning default controls for Luna, Sol, Spark, Instant, Medium, and Max.
 - One-click Fast mode for switching new chats to Spark + Instant and restoring the previous defaults when disabled.
 - DockDoor settings schema for session folder, usage state file, recent session count, budget window, and rainbow mode.
 
