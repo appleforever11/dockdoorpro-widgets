@@ -8,33 +8,16 @@ enum PomodoroTheme: String, CaseIterable {
     case ocean = "Ocean"
     case forest = "Forest"
 
-    var title: String {
-        switch self {
-        case .systemAccent:
-            return PomodoroL10n.text("系统强调色", "System Accent")
-        case .tomato:
-            return PomodoroL10n.text("番茄红", "Tomato")
-        case .sunset:
-            return PomodoroL10n.text("日落", "Sunset")
-        case .ocean:
-            return PomodoroL10n.text("海洋", "Ocean")
-        case .forest:
-            return PomodoroL10n.text("森林", "Forest")
-        }
-    }
-
-    static func resolve(title: String) -> PomodoroTheme {
-        allCases.first { theme in
-            title == theme.rawValue || theme.localizedTitles.contains(title)
-        } ?? .tomato
+    static func resolve(rawValue: String) -> PomodoroTheme {
+        PomodoroTheme(rawValue: rawValue) ?? .tomato
     }
 
     static func current(widgetId: String) -> PomodoroTheme {
         resolve(
-            title: WidgetDefaults.string(
+            rawValue: WidgetDefaults.string(
                 key: "theme",
                 widgetId: widgetId,
-                default: PomodoroTheme.tomato.title
+                default: PomodoroTheme.tomato.rawValue
             )
         )
     }
@@ -103,15 +86,6 @@ enum PomodoroTheme: String, CaseIterable {
         }
     }
 
-    private var localizedTitles: [String] {
-        switch self {
-        case .systemAccent: return ["系统强调色", "System Accent"]
-        case .tomato: return ["番茄红", "Tomato"]
-        case .sunset: return ["日落", "Sunset"]
-        case .ocean: return ["海洋", "Ocean"]
-        case .forest: return ["森林", "Forest"]
-        }
-    }
 }
 
 struct PomodoroPalette {
@@ -136,21 +110,5 @@ struct PomodoroPalette {
         case .longBreak:
             return longBreak
         }
-    }
-}
-
-enum PomodoroL10n {
-    static var isChinese: Bool {
-        let identifier = Locale.preferredLanguages.first
-            ?? Locale.current.identifier
-        return identifier.lowercased().hasPrefix("zh")
-    }
-
-    static var locale: Locale {
-        Locale(identifier: isChinese ? "zh_CN" : "en_US")
-    }
-
-    static func text(_ chinese: String, _ english: String) -> String {
-        isChinese ? chinese : english
     }
 }

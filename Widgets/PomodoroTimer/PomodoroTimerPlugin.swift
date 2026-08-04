@@ -3,89 +3,73 @@ import SwiftUI
 
 final class PomodoroTimerPlugin: WidgetPlugin, DockDoorWidgetProvider {
     var id: String { "pomodoro-timer" }
-    var name: String {
-        PomodoroL10n.text("番茄时钟", "Pomodoro Timer")
-    }
+    var name: String { "Pomodoro Timer" }
     var iconSymbol: String { "timer" }
     var widgetDescription: String {
-        PomodoroL10n.text(
-            "带休息循环、每日目标与进度记忆的专注计时器。",
-            "Focus timer with break cycles, daily goals, and persistent progress."
-        )
+        "A polished focus timer with break cycles, daily goals, and persistent progress."
     }
     var supportedOrientations: [WidgetOrientation] { [.horizontal, .vertical] }
 
     private lazy var timerModel = PomodoroTimerModel(widgetId: id)
 
     func settingsSchema() -> [WidgetSetting] {
-        normalizeStoredTheme()
         return [
             .slider(
                 key: "focusMinutes",
-                label: PomodoroL10n.text("专注时长（分钟）", "Focus Duration (minutes)"),
+                label: "Focus Duration (minutes)",
                 range: 15...60,
                 step: 5,
                 defaultValue: 25
             ),
             .slider(
                 key: "shortBreakMinutes",
-                label: PomodoroL10n.text("短休息（分钟）", "Short Break (minutes)"),
+                label: "Short Break (minutes)",
                 range: 3...15,
                 step: 1,
                 defaultValue: 5
             ),
             .slider(
                 key: "longBreakMinutes",
-                label: PomodoroL10n.text("长休息（分钟）", "Long Break (minutes)"),
+                label: "Long Break (minutes)",
                 range: 10...30,
                 step: 5,
                 defaultValue: 15
             ),
             .picker(
                 key: "sessionsPerRound",
-                label: PomodoroL10n.text("长休息前的专注次数", "Focus Sessions Before Long Break"),
+                label: "Focus Sessions Before Long Break",
                 options: ["2", "3", "4", "5"],
                 defaultValue: "4"
             ),
             .slider(
                 key: "dailyGoal",
-                label: PomodoroL10n.text("每日专注目标", "Daily Focus Goal"),
+                label: "Daily Focus Goal",
                 range: 1...12,
                 step: 1,
                 defaultValue: 8
             ),
             .toggle(
                 key: "autoStartBreaks",
-                label: PomodoroL10n.text("自动开始休息", "Auto-start Breaks"),
+                label: "Auto-start Breaks",
                 defaultValue: false
             ),
             .toggle(
                 key: "autoStartFocus",
-                label: PomodoroL10n.text("自动开始专注", "Auto-start Focus Sessions"),
+                label: "Auto-start Focus Sessions",
                 defaultValue: false
             ),
             .toggle(
                 key: "playSound",
-                label: PomodoroL10n.text("阶段结束时播放提示音", "Play Sound When a Session Ends"),
+                label: "Play Sound When a Session Ends",
                 defaultValue: true
             ),
             .picker(
                 key: "theme",
-                label: PomodoroL10n.text("主题颜色", "Color Theme"),
-                options: PomodoroTheme.allCases.map(\.title),
-                defaultValue: PomodoroTheme.tomato.title
+                label: "Color Theme",
+                options: PomodoroTheme.allCases.map(\.rawValue),
+                defaultValue: PomodoroTheme.tomato.rawValue
             ),
         ]
-    }
-
-    private func normalizeStoredTheme() {
-        let key = "widget.\(id).theme"
-        let defaults = UserDefaults.standard
-        guard let value = defaults.string(forKey: key) else { return }
-        let normalized = PomodoroTheme.resolve(title: value).title
-        if value != normalized {
-            defaults.set(normalized, forKey: key)
-        }
     }
 
     @MainActor
@@ -113,7 +97,7 @@ final class PomodoroTimerPlugin: WidgetPlugin, DockDoorWidgetProvider {
 
     func performTapAction() {
         DispatchQueue.main.async { [weak self] in
-            self?.timerModel.toggleTimer()
+            self?.timerModel.toggleTimer(at: Date())
         }
     }
 }

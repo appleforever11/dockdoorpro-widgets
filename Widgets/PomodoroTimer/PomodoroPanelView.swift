@@ -2,7 +2,7 @@ import SwiftUI
 
 struct PomodoroPanelView: View {
     let widgetId: String
-    @ObservedObject var model: PomodoroTimerModel
+    var model: PomodoroTimerModel
     let dismiss: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -16,12 +16,24 @@ struct PomodoroPanelView: View {
     }
 
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            panelContent(at: context.date)
+                .onChange(of: context.date) { _, date in
+                    model.synchronize(at: date)
+                }
+        }
+        .onAppear {
+            model.synchronize(at: Date())
+        }
+    }
+
+    private func panelContent(at date: Date) -> some View {
         VStack(spacing: 0) {
             header
 
             VStack(spacing: 14) {
                 phaseSelector
-                timerCard
+                timerCard(at: date)
                 controls
                 todayCard
                 footerHint
@@ -39,17 +51,17 @@ struct PomodoroPanelView: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(palette.gradient)
                 Image(systemName: "timer")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
             }
             .frame(width: 38, height: 38)
             .shadow(color: phaseColor.opacity(0.22), radius: 6, y: 2)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(PomodoroL10n.text("番茄时钟", "Pomodoro Timer"))
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                Text(model.statusText)
-                    .font(.system(size: 9, weight: .semibold))
+                Text(verbatim: "Pomodoro Timer")
+                    .font(.headline.weight(.bold))
+                Text(verbatim: model.statusText)
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
 
@@ -58,10 +70,10 @@ struct PomodoroPanelView: View {
             HStack(spacing: 5) {
                 Image(systemName: "flame.fill")
                     .foregroundStyle(palette.secondary)
-                Text("\(model.completedToday)/\(model.dailyGoal)")
+                Text(verbatim: "\(model.completedToday)/\(model.dailyGoal)")
                     .monospacedDigit()
             }
-            .font(.system(size: 10, weight: .bold))
+            .font(.caption.weight(.bold))
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
             .background(phaseColor.opacity(0.10), in: Capsule())
@@ -94,8 +106,8 @@ struct PomodoroPanelView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: phase.symbol)
-                            .font(.system(size: 9, weight: .semibold))
-                        Text(phase.title)
+                            .font(.caption.weight(.semibold))
+                        Text(verbatim: phase.title)
                             .lineLimit(1)
                     }
                     .frame(maxWidth: .infinity)
@@ -106,22 +118,24 @@ struct PomodoroPanelView: View {
                         accent: palette.phaseColor(phase)
                     )
                 )
-                .accessibilityHint(PomodoroL10n.text(
-                    "切换并重置为此阶段",
-                    "Switch and reset to this phase"
-                ))
+                .accessibilityHint(
+                    Text(verbatim: "Switch and reset to this phase")
+                )
             }
         }
     }
 
-    private var timerCard: some View {
+    private func timerCard(at date: Date) -> some View {
         VStack(spacing: 12) {
             ZStack {
                 Circle()
                     .stroke(phaseColor.opacity(0.12), lineWidth: 11)
 
                 Circle()
-                    .trim(from: 0, to: max(0.001, model.remainingFraction))
+                    .trim(
+                        from: 0,
+                        to: max(0.001, model.remainingFraction(at: date))
+                    )
                     .stroke(
                         AngularGradient(
                             colors: [phaseColor, palette.secondary, phaseColor],
@@ -134,17 +148,13 @@ struct PomodoroPanelView: View {
 
                 VStack(spacing: 3) {
                     Image(systemName: model.phase.symbol)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(phaseColor)
-                    Text(model.displayTime)
-                        .font(.system(
-                            size: 31,
-                            weight: .bold,
-                            design: .rounded
-                        ).monospacedDigit())
+                    Text(verbatim: model.displayTime(at: date))
+                        .font(.largeTitle.weight(.bold).monospacedDigit())
                         .contentTransition(.numericText())
-                    Text(model.phase.title)
-                        .font(.system(size: 9, weight: .bold))
+                    Text(verbatim: model.phase.title)
+                        .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
                         .kerning(0.5)
@@ -161,13 +171,10 @@ struct PomodoroPanelView: View {
 
             HStack(spacing: 5) {
                 Image(systemName: "arrow.turn.down.right")
-                    .font(.system(size: 8, weight: .bold))
-                Text(PomodoroL10n.text(
-                    "接下来：\(model.nextPhase.title)",
-                    "Up next: \(model.nextPhase.title)"
-                ))
+                    .font(.caption2.weight(.bold))
+                Text(verbatim: "Up next: \(model.nextPhase.title)")
             }
-            .font(.system(size: 9, weight: .semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -217,10 +224,11 @@ struct PomodoroPanelView: View {
             }
         }
         .padding(.vertical, 2)
-        .accessibilityLabel(PomodoroL10n.text(
-            "本轮已完成 \(model.cycleFocusCount) 次专注",
-            "\(model.cycleFocusCount) focus sessions completed this round"
-        ))
+        .accessibilityLabel(
+            Text(verbatim:
+                "\(model.cycleFocusCount) focus sessions completed this round"
+            )
+        )
     }
 
     private var controls: some View {
@@ -228,18 +236,18 @@ struct PomodoroPanelView: View {
             Button {
                 model.reset()
             } label: {
-                Label(
-                    PomodoroL10n.text("重置", "Reset"),
-                    systemImage: "arrow.counterclockwise"
-                )
+                actionLabel("Reset", systemImage: "arrow.counterclockwise")
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(PomodoroActionButtonStyle(accent: phaseColor))
 
             Button {
-                model.toggleTimer()
+                model.toggleTimer(at: Date())
             } label: {
-                Label(primaryActionTitle, systemImage: primaryActionSymbol)
+                actionLabel(
+                    primaryActionTitle,
+                    systemImage: primaryActionSymbol
+                )
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(
@@ -253,10 +261,7 @@ struct PomodoroPanelView: View {
             Button {
                 model.skip()
             } label: {
-                Label(
-                    PomodoroL10n.text("跳过", "Skip"),
-                    systemImage: "forward.end.fill"
-                )
+                actionLabel("Skip", systemImage: "forward.end.fill")
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(PomodoroActionButtonStyle(accent: palette.secondary))
@@ -266,20 +271,18 @@ struct PomodoroPanelView: View {
     private var todayCard: some View {
         VStack(spacing: 9) {
             HStack {
-                Label(
-                    PomodoroL10n.text("今日专注", "Today's Focus"),
-                    systemImage: "chart.bar.fill"
-                )
-                .font(.system(size: 10, weight: .bold))
+                Label {
+                    Text(verbatim: "Today's Focus")
+                } icon: {
+                    Image(systemName: "chart.bar.fill")
+                }
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(.secondary)
 
                 Spacer()
 
-                Text(PomodoroL10n.text(
-                    "\(model.completedToday) / \(model.dailyGoal) 个番茄",
-                    "\(model.completedToday) of \(model.dailyGoal) sessions"
-                ))
-                .font(.system(size: 9, weight: .semibold))
+                Text(verbatim: "\(model.completedToday) of \(model.dailyGoal) sessions")
+                .font(.caption.weight(.semibold))
                 .monospacedDigit()
             }
 
@@ -297,13 +300,13 @@ struct PomodoroPanelView: View {
             .frame(height: 7)
 
             HStack {
-                Text(todayMotivation)
+                Text(verbatim: todayMotivation)
                 Spacer()
-                Text("\(Int((model.dailyProgress * 100).rounded()))%")
+                Text(verbatim: "\(Int((model.dailyProgress * 100).rounded()))%")
                     .fontWeight(.bold)
                     .monospacedDigit()
             }
-            .font(.system(size: 8.5, weight: .medium))
+            .font(.caption2.weight(.medium))
             .foregroundStyle(.secondary)
         }
         .padding(12)
@@ -320,23 +323,20 @@ struct PomodoroPanelView: View {
     private var footerHint: some View {
         HStack(spacing: 6) {
             Image(systemName: "cursorarrow.click.2")
-            Text(PomodoroL10n.text(
-                "单击 Dock 小组件可快速开始或暂停",
-                "Click the Dock widget to start or pause"
-            ))
+            Text(verbatim: "Click the Dock widget to start or pause")
         }
-        .font(.system(size: 8.5, weight: .medium))
+        .font(.caption2.weight(.medium))
         .foregroundStyle(.tertiary)
     }
 
     private var primaryActionTitle: String {
         switch model.runState {
         case .running:
-            return PomodoroL10n.text("暂停", "Pause")
+            return "Pause"
         case .paused:
-            return PomodoroL10n.text("继续", "Resume")
+            return "Resume"
         case .idle:
-            return PomodoroL10n.text("开始", "Start")
+            return "Start"
         }
     }
 
@@ -344,14 +344,25 @@ struct PomodoroPanelView: View {
         model.isRunning ? "pause.fill" : "play.fill"
     }
 
+    private func actionLabel(
+        _ title: String,
+        systemImage: String
+    ) -> some View {
+        Label {
+            Text(verbatim: title)
+        } icon: {
+            Image(systemName: systemImage)
+        }
+    }
+
     private var todayMotivation: String {
         if model.completedToday >= model.dailyGoal {
-            return PomodoroL10n.text("今日目标已完成，做得好！", "Goal complete — nicely done!")
+            return "Goal complete — nicely done!"
         }
         if model.completedToday == 0 {
-            return PomodoroL10n.text("从第一个番茄开始", "Start with one focused session")
+            return "Start with one focused session"
         }
-        return PomodoroL10n.text("保持节奏，继续前进", "Keep the rhythm going")
+        return "Keep the rhythm going"
     }
 
     private var panelBackground: some View {
@@ -392,7 +403,7 @@ private struct PomodoroModeButtonBody: View {
 
     var body: some View {
         configuration.label
-            .font(.system(size: 9, weight: .semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(selected || hovered ? accent : Color.secondary)
             .padding(.horizontal, 7)
             .frame(height: 30)
@@ -437,7 +448,7 @@ private struct PomodoroActionButtonBody: View {
 
     var body: some View {
         configuration.label
-            .font(.system(size: 10, weight: .bold))
+            .font(.callout.weight(.semibold))
             .foregroundStyle(prominent ? Color.white : accent)
             .padding(.horizontal, 8)
             .frame(height: 36)

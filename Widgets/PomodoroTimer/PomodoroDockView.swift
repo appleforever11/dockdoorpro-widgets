@@ -6,7 +6,7 @@ struct PomodoroDockView: View {
     let isVertical: Bool
     let widgetId: String
 
-    @ObservedObject var model: PomodoroTimerModel
+    var model: PomodoroTimerModel
     @Environment(\.colorScheme) private var colorScheme
 
     private var dim: CGFloat { min(size.width, size.height) }
@@ -24,27 +24,49 @@ struct PomodoroDockView: View {
     }
 
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            dockContent(at: context.date)
+                .onChange(of: context.date) { _, date in
+                    model.synchronize(at: date)
+                }
+        }
+        .onAppear {
+            model.synchronize(at: Date())
+        }
+    }
+
+    @ViewBuilder
+    private func dockContent(at date: Date) -> some View {
         Group {
             switch slotSpan {
             case .compact:
-                compactLayout
+                compactLayout(at: date)
             case .extended:
-                extendedLayout
+                extendedLayout(at: date)
             case .triple:
-                tripleLayout
+                tripleLayout(at: date)
             }
         }
-        .padding(dim * 0.07)
-        .animation(.easeInOut(duration: 0.28), value: model.remainingFraction)
+        .padding(dim * WidgetMetrics.spacingScale)
+        .animation(
+            .easeInOut(duration: 0.28),
+            value: model.remainingFraction(at: date)
+        )
         .animation(.spring(response: 0.34, dampingFraction: 0.76), value: model.phase)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(model.phase.title), \(model.displayTime), \(model.statusText)"
+            Text(verbatim:
+                "\(model.phase.title), \(model.displayTime(at: date)), \(model.statusText)"
+            )
         )
     }
 
-    private var compactLayout: some View {
-        countdownRing(size: dim * 0.77, compact: true)
+    private func compactLayout(at date: Date) -> some View {
+        countdownRing(
+            size: dim * WidgetMetrics.contentScale,
+            compact: true,
+            at: date
+        )
             .scaleEffect(model.completionPulse.isMultiple(of: 2) ? 1 : 1.035)
             .animation(
                 .spring(response: 0.32, dampingFraction: 0.62),
@@ -52,34 +74,50 @@ struct PomodoroDockView: View {
             )
     }
 
-    private var extendedLayout: some View {
+    private func extendedLayout(at date: Date) -> some View {
         Group {
             if isVertical {
-                VStack(spacing: dim * 0.055) {
-                    countdownRing(size: dim * 0.58, compact: false)
-                    statusSummary(alignment: .center, compact: true)
+                VStack(spacing: dim * WidgetMetrics.spacingScale) {
+                    countdownRing(
+                        size: dim * WidgetMetrics.contentScale * 0.68,
+                        compact: false,
+                        at: date
+                    )
+                    statusSummary(alignment: .center, compact: true, at: date)
                 }
             } else {
-                HStack(spacing: dim * 0.10) {
-                    countdownRing(size: dim * 0.65, compact: false)
-                    statusSummary(alignment: .leading, compact: false)
+                HStack(spacing: dim * WidgetMetrics.spacingScale) {
+                    countdownRing(
+                        size: dim * WidgetMetrics.contentScale * 0.76,
+                        compact: false,
+                        at: date
+                    )
+                    statusSummary(alignment: .leading, compact: false, at: date)
                 }
             }
         }
     }
 
-    private var tripleLayout: some View {
+    private func tripleLayout(at date: Date) -> some View {
         Group {
             if isVertical {
-                VStack(spacing: dim * 0.07) {
-                    countdownRing(size: dim * 0.62, compact: false)
-                    statusSummary(alignment: .center, compact: false)
+                VStack(spacing: dim * WidgetMetrics.spacingScale) {
+                    countdownRing(
+                        size: dim * WidgetMetrics.contentScale * 0.73,
+                        compact: false,
+                        at: date
+                    )
+                    statusSummary(alignment: .center, compact: false, at: date)
                     dailyGoalView(horizontal: false)
                 }
             } else {
-                HStack(spacing: dim * 0.12) {
-                    countdownRing(size: dim * 0.67, compact: false)
-                    statusSummary(alignment: .leading, compact: false)
+                HStack(spacing: dim * WidgetMetrics.spacingScale * 1.25) {
+                    countdownRing(
+                        size: dim * WidgetMetrics.contentScale * 0.79,
+                        compact: false,
+                        at: date
+                    )
+                    statusSummary(alignment: .leading, compact: false, at: date)
                     dailyGoalView(horizontal: true)
                         .frame(maxWidth: dim * 0.95)
                 }
@@ -87,13 +125,20 @@ struct PomodoroDockView: View {
         }
     }
 
-    private func countdownRing(size ringSize: CGFloat, compact: Bool) -> some View {
+    private func countdownRing(
+        size ringSize: CGFloat,
+        compact: Bool,
+        at date: Date
+    ) -> some View {
         ZStack {
             Circle()
                 .stroke(phaseColor.opacity(0.14), lineWidth: ringSize * 0.105)
 
             Circle()
-                .trim(from: 0, to: max(0.001, model.remainingFraction))
+                .trim(
+                    from: 0,
+                    to: max(0.001, model.remainingFraction(at: date))
+                )
                 .stroke(
                     AngularGradient(
                         colors: [phaseColor, palette.secondary, phaseColor],
@@ -109,14 +154,14 @@ struct PomodoroDockView: View {
 
             if compact {
                 VStack(spacing: -1) {
-                    Text(model.compactValue)
+                    Text(verbatim: model.compactValue(at: date))
                         .font(.system(
                             size: ringSize * 0.30,
                             weight: .bold,
                             design: .rounded
                         ).monospacedDigit())
                         .minimumScaleFactor(0.62)
-                    Text(model.compactUnit)
+                    Text(verbatim: model.compactUnit(at: date))
                         .font(.system(
                             size: max(7.5, ringSize * 0.13),
                             weight: .bold,
@@ -127,7 +172,10 @@ struct PomodoroDockView: View {
                 }
             } else {
                 Image(systemName: model.phase.symbol)
-                    .font(.system(size: ringSize * 0.25, weight: .semibold))
+                    .font(.system(
+                        size: ringSize * WidgetMetrics.sfSymbolScale * 0.45,
+                        weight: .semibold
+                    ))
                     .foregroundStyle(phaseColor)
             }
         }
@@ -147,10 +195,11 @@ struct PomodoroDockView: View {
 
     private func statusSummary(
         alignment: HorizontalAlignment,
-        compact: Bool
+        compact: Bool,
+        at date: Date
     ) -> some View {
         VStack(alignment: alignment, spacing: compact ? 0 : 1) {
-            Text(model.phase.compactTitle)
+            Text(verbatim: model.phase.compactTitle)
                 .font(.system(
                     size: dim * (compact ? 0.105 : 0.12),
                     weight: .bold,
@@ -159,7 +208,7 @@ struct PomodoroDockView: View {
                 .foregroundStyle(phaseColor)
                 .lineLimit(1)
 
-            Text(model.displayTime)
+            Text(verbatim: model.displayTime(at: date))
                 .font(.system(
                     size: dim * (compact ? 0.16 : 0.20),
                     weight: .bold,
@@ -171,8 +220,14 @@ struct PomodoroDockView: View {
             if !compact {
                 HStack(spacing: 3) {
                     Image(systemName: model.isRunning ? "play.fill" : (model.isPaused ? "pause.fill" : "circle"))
-                        .font(.system(size: max(7, dim * 0.09), weight: .bold))
-                    Text(model.statusText)
+                        .font(.system(
+                            size: max(
+                                7,
+                                dim * WidgetMetrics.sfSymbolScale * 0.16
+                            ),
+                            weight: .bold
+                        ))
+                    Text(verbatim: model.statusText)
                         .lineLimit(1)
                 }
                 .font(.system(
@@ -188,12 +243,16 @@ struct PomodoroDockView: View {
     private func dailyGoalView(horizontal: Bool) -> some View {
         VStack(
             alignment: horizontal ? .leading : .center,
-            spacing: dim * 0.035
+            spacing: dim * WidgetMetrics.spacingScale * 0.45
         ) {
             HStack(spacing: 4) {
                 Image(systemName: "flame.fill")
+                    .font(.system(
+                        size: dim * WidgetMetrics.sfSymbolScale * 0.18,
+                        weight: .semibold
+                    ))
                     .foregroundStyle(palette.secondary)
-                Text("\(model.completedToday)/\(model.dailyGoal)")
+                Text(verbatim: "\(model.completedToday)/\(model.dailyGoal)")
                     .fontWeight(.bold)
                     .monospacedDigit()
             }
@@ -210,7 +269,7 @@ struct PomodoroDockView: View {
             }
             .frame(height: max(3, dim * 0.045))
 
-            Text(PomodoroL10n.text("今日目标", "TODAY"))
+            Text(verbatim: "TODAY")
                 .font(.system(size: dim * 0.07, weight: .bold))
                 .foregroundStyle(.secondary)
                 .kerning(0.25)

@@ -1,7 +1,7 @@
 import AppKit
-import Combine
 import DockDoorWidgetSDK
 import Foundation
+import Observation
 
 enum PomodoroPhase: String, Codable, CaseIterable, Identifiable {
     case focus
@@ -13,22 +13,22 @@ enum PomodoroPhase: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .focus:
-            return PomodoroL10n.text("专注", "Focus")
+            return "Focus"
         case .shortBreak:
-            return PomodoroL10n.text("短休息", "Short Break")
+            return "Short Break"
         case .longBreak:
-            return PomodoroL10n.text("长休息", "Long Break")
+            return "Long Break"
         }
     }
 
     var compactTitle: String {
         switch self {
         case .focus:
-            return PomodoroL10n.text("专注", "FOCUS")
+            return "FOCUS"
         case .shortBreak:
-            return PomodoroL10n.text("休息", "BREAK")
+            return "BREAK"
         case .longBreak:
-            return PomodoroL10n.text("长休", "LONG")
+            return "LONG"
         }
     }
 
@@ -58,92 +58,81 @@ private struct PomodoroSavedState: Codable {
     var dayKey: String
 }
 
-final class PomodoroTimerModel: ObservableObject {
-    @Published private(set) var phase: PomodoroPhase = .focus
-    @Published private(set) var runState: PomodoroRunState = .idle
-    @Published private(set) var remainingSeconds = 25 * 60
-    @Published private(set) var totalSeconds = 25 * 60
-    @Published private(set) var completedToday = 0
-    @Published private(set) var cycleFocusCount = 0
-    @Published private(set) var completionPulse = 0
+@Observable
+final class PomodoroTimerModel {
+    private(set) var phase: PomodoroPhase = .focus
+    private(set) var runState: PomodoroRunState = .idle
+    private(set) var totalSeconds = 25 * 60
+    private(set) var completedToday = 0
+    private(set) var cycleFocusCount = 0
+    private(set) var completionPulse = 0
 
     let widgetId: String
 
+    private var storedRemainingSeconds = 25 * 60
     private var endDate: Date?
-    private var ticker: Timer?
-    private var defaultsObserver: NSObjectProtocol?
-    private var dayChangeObserver: NSObjectProtocol?
 
     init(widgetId: String) {
         self.widgetId = widgetId
         restore()
-        normalizeDayIfNeeded()
-        reconcileRestoredTimer()
-
-        defaultsObserver = NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.settingsDidChange()
-        }
-
-        dayChangeObserver = NotificationCenter.default.addObserver(
-            forName: .NSCalendarDayChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.normalizeDayIfNeeded()
-        }
-    }
-
-    deinit {
-        ticker?.invalidate()
-        if let defaultsObserver {
-            NotificationCenter.default.removeObserver(defaultsObserver)
-        }
-        if let dayChangeObserver {
-            NotificationCenter.default.removeObserver(dayChangeObserver)
-        }
+        let now = Date()
+        normalizeDayIfNeeded(at: now)
+        reconcileRestoredTimer(at: now)
+        synchronizeIdleDuration()
     }
 
     var isRunning: Bool { runState == .running }
     var isPaused: Bool { runState == .paused }
 
-    var remainingFraction: Double {
-        guard totalSeconds > 0 else { return 0 }
-        return min(1, max(0, Double(remainingSeconds) / Double(totalSeconds)))
+    func remainingSeconds(at date: Date) -> Int {
+        guard runState == .running, let endDate else {
+            return storedRemainingSeconds
+        }
+        return max(0, Int(ceil(endDate.timeIntervalSince(date))))
     }
 
-    var elapsedFraction: Double { 1 - remainingFraction }
+    func remainingFraction(at date: Date) -> Double {
+        guard totalSeconds > 0 else { return 0 }
+        return min(
+            1,
+            max(0, Double(remainingSeconds(at: date)) / Double(totalSeconds))
+        )
+    }
 
-    var displayTime: String {
+    func elapsedFraction(at date: Date) -> Double {
+        1 - remainingFraction(at: date)
+    }
+
+    func displayTime(at date: Date) -> String {
+        let remainingSeconds = remainingSeconds(at: date)
         let minutes = remainingSeconds / 60
         let seconds = remainingSeconds % 60
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
-    var compactValue: String {
+    func compactValue(at date: Date) -> String {
+        let remainingSeconds = remainingSeconds(at: date)
         if remainingSeconds >= 60 {
             return String(Int(ceil(Double(remainingSeconds) / 60)))
         }
         return String(remainingSeconds)
     }
 
-    var compactUnit: String {
-        remainingSeconds >= 60
-            ? PomodoroL10n.text("分", "MIN")
-            : PomodoroL10n.text("秒", "SEC")
+    func compactUnit(at date: Date) -> String {
+        let remainingSeconds = remainingSeconds(at: date)
+        return remainingSeconds >= 60
+            ? "MIN"
+            : "SEC"
     }
 
     var statusText: String {
         switch runState {
         case .idle:
-            return PomodoroL10n.text("准备开始", "Ready")
+            return "Ready"
         case .running:
-            return PomodoroL10n.text("进行中", "In progress")
+            return "In progress"
         case .paused:
-            return PomodoroL10n.text("已暂停", "Paused")
+            return "Paused"
         }
     }
 
@@ -177,37 +166,46 @@ final class PomodoroTimerModel: ObservableObject {
         }
     }
 
-    func toggleTimer() {
+    func synchronize(at date: Date) {
+        normalizeDayIfNeeded(at: date)
+        synchronizeIdleDuration()
+
+        guard runState == .running,
+              let endDate,
+              endDate <= date else { return }
+        storedRemainingSeconds = 0
+        finishCurrentPhase(at: date, playSound: true)
+    }
+
+    func toggleTimer(at date: Date = Date()) {
         switch runState {
         case .running:
-            pause()
+            pause(at: date)
         case .idle, .paused:
-            start()
+            start(at: date)
         }
     }
 
-    func start() {
-        normalizeDayIfNeeded()
-        if remainingSeconds <= 0 {
+    func start(at date: Date = Date()) {
+        normalizeDayIfNeeded(at: date)
+        synchronizeIdleDuration()
+        if storedRemainingSeconds <= 0 {
             configureCurrentPhase()
         }
         runState = .running
-        endDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
-        startTicker()
-        persist()
+        endDate = date.addingTimeInterval(TimeInterval(storedRemainingSeconds))
+        persist(at: date)
     }
 
-    func pause() {
+    func pause(at date: Date = Date()) {
         guard runState == .running else { return }
-        updateRemainingTime()
+        storedRemainingSeconds = remainingSeconds(at: date)
         runState = .paused
         endDate = nil
-        stopTicker()
-        persist()
+        persist(at: date)
     }
 
     func reset() {
-        stopTicker()
         runState = .idle
         endDate = nil
         configureCurrentPhase()
@@ -215,7 +213,6 @@ final class PomodoroTimerModel: ObservableObject {
     }
 
     func skip() {
-        stopTicker()
         runState = .idle
         endDate = nil
         phase = nextPhase
@@ -225,7 +222,6 @@ final class PomodoroTimerModel: ObservableObject {
 
     func selectPhase(_ newPhase: PomodoroPhase) {
         guard newPhase != phase || runState != .idle else { return }
-        stopTicker()
         phase = newPhase
         runState = .idle
         endDate = nil
@@ -233,39 +229,7 @@ final class PomodoroTimerModel: ObservableObject {
         persist()
     }
 
-    private func startTicker() {
-        guard ticker == nil else { return }
-        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            self?.tick()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        ticker = timer
-    }
-
-    private func stopTicker() {
-        ticker?.invalidate()
-        ticker = nil
-    }
-
-    private func tick() {
-        normalizeDayIfNeeded()
-        guard runState == .running else { return }
-        updateRemainingTime()
-        if remainingSeconds <= 0 {
-            finishCurrentPhase(playSound: true)
-        }
-    }
-
-    private func updateRemainingTime() {
-        guard let endDate else { return }
-        let next = max(0, Int(ceil(endDate.timeIntervalSinceNow)))
-        if next != remainingSeconds {
-            remainingSeconds = next
-        }
-    }
-
-    private func finishCurrentPhase(playSound: Bool) {
-        stopTicker()
+    private func finishCurrentPhase(at date: Date, playSound: Bool) {
         let completedPhase = phase
 
         if completedPhase == .focus {
@@ -308,19 +272,18 @@ final class PomodoroTimerModel: ObservableObject {
 
         if shouldAutoStart {
             runState = .running
-            endDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
-            startTicker()
+            endDate = date.addingTimeInterval(TimeInterval(storedRemainingSeconds))
         } else {
             runState = .idle
             endDate = nil
         }
-        persist()
+        persist(at: date)
     }
 
     private func configureCurrentPhase() {
         let duration = durationSeconds(for: phase)
         totalSeconds = duration
-        remainingSeconds = duration
+        storedRemainingSeconds = duration
     }
 
     private func durationSeconds(for phase: PomodoroPhase) -> Int {
@@ -348,37 +311,35 @@ final class PomodoroTimerModel: ObservableObject {
         return minutes * 60
     }
 
-    private func settingsDidChange() {
+    private func synchronizeIdleDuration() {
+        guard runState == .idle else { return }
         let desiredDuration = durationSeconds(for: phase)
-        if runState == .idle,
-           (totalSeconds != desiredDuration || remainingSeconds != desiredDuration) {
+        if totalSeconds != desiredDuration
+            || storedRemainingSeconds != desiredDuration {
             totalSeconds = desiredDuration
-            remainingSeconds = desiredDuration
+            storedRemainingSeconds = desiredDuration
             persist()
-        } else {
-            objectWillChange.send()
         }
     }
 
-    private func normalizeDayIfNeeded() {
-        let today = Self.dayKey()
+    private func normalizeDayIfNeeded(at date: Date) {
+        let today = Self.dayKey(for: date)
         let stored = UserDefaults.standard.string(forKey: Self.dayKeyStorageKey(widgetId))
         guard stored != today else { return }
-        resetForNewDay()
+        resetForNewDay(at: date)
     }
 
-    private func resetForNewDay() {
-        stopTicker()
+    private func resetForNewDay(at date: Date) {
         phase = .focus
         runState = .idle
         endDate = nil
         completedToday = 0
         cycleFocusCount = 0
         configureCurrentPhase()
-        persist()
+        persist(at: date)
     }
 
-    private func reconcileRestoredTimer() {
+    private func reconcileRestoredTimer(at date: Date) {
         guard runState == .running, let endDate else {
             if runState == .running {
                 runState = .paused
@@ -386,29 +347,27 @@ final class PomodoroTimerModel: ObservableObject {
             return
         }
 
-        remainingSeconds = max(0, Int(ceil(endDate.timeIntervalSinceNow)))
-        if remainingSeconds <= 0 {
-            finishCurrentPhase(playSound: false)
-        } else {
-            startTicker()
+        storedRemainingSeconds = max(0, Int(ceil(endDate.timeIntervalSince(date))))
+        if storedRemainingSeconds <= 0 {
+            finishCurrentPhase(at: date, playSound: false)
         }
     }
 
-    private func persist() {
+    private func persist(at date: Date = Date()) {
         let state = PomodoroSavedState(
             phase: phase,
             runState: runState,
-            remainingSeconds: remainingSeconds,
+            remainingSeconds: remainingSeconds(at: date),
             totalSeconds: totalSeconds,
             endDate: endDate,
             completedToday: completedToday,
             cycleFocusCount: cycleFocusCount,
-            dayKey: Self.dayKey()
+            dayKey: Self.dayKey(for: date)
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         UserDefaults.standard.set(data, forKey: Self.stateStorageKey(widgetId))
         UserDefaults.standard.set(
-            Self.dayKey(),
+            Self.dayKey(for: date),
             forKey: Self.dayKeyStorageKey(widgetId)
         )
     }
@@ -427,14 +386,15 @@ final class PomodoroTimerModel: ObservableObject {
 
         phase = saved.phase
         runState = saved.runState
-        remainingSeconds = max(0, saved.remainingSeconds)
+        storedRemainingSeconds = max(0, saved.remainingSeconds)
         totalSeconds = max(1, saved.totalSeconds)
         endDate = saved.endDate
         completedToday = max(0, saved.completedToday)
         cycleFocusCount = max(0, saved.cycleFocusCount)
 
-        if saved.dayKey != Self.dayKey() {
-            resetForNewDay()
+        let now = Date()
+        if saved.dayKey != Self.dayKey(for: now) {
+            resetForNewDay(at: now)
         }
     }
 
@@ -477,10 +437,10 @@ final class PomodoroTimerModel: ObservableObject {
         "widget.\(widgetId).timerDay"
     }
 
-    private static func dayKey() -> String {
+    private static func dayKey(for date: Date) -> String {
         let components = Calendar.current.dateComponents(
             [.year, .month, .day],
-            from: Date()
+            from: date
         )
         return "\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
     }
