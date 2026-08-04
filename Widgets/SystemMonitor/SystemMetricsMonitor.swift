@@ -2,52 +2,13 @@ import AppKit
 import Darwin
 import Foundation
 
-struct ProcessIdentity: Equatable {
-    let pid: pid_t
-    let ownerUID: uid_t
-    let startSeconds: UInt64
-    let startMicroseconds: UInt64
-}
-
 struct ProcessMetric: Identifiable, Equatable {
     let pid: pid_t
     let name: String
     let value: Double
-    let identity: ProcessIdentity?
 
-    var id: String {
-        guard let identity else { return "\(pid):unknown" }
-        return "\(pid):\(identity.startSeconds):\(identity.startMicroseconds)"
-    }
-
-    var canTerminate: Bool {
-        guard let identity, pid > 1, pid != getpid() else { return false }
-        return identity.ownerUID == getuid() || identity.ownerUID == geteuid()
-    }
+    var id: pid_t { pid }
 }
-
-enum ProcessTerminationResult: Equatable {
-    case requested
-    case forceRequested
-    case blocked
-    case permissionDenied
-    case processChanged
-    case notRunning
-    case failed(Int32)
-
-    var displayText: String {
-        switch self {
-        case .requested: return "Requested"
-        case .forceRequested: return "Killed"
-        case .blocked: return "Protected"
-        case .permissionDenied: return "Denied"
-        case .processChanged: return "PID changed"
-        case .notRunning: return "Exited"
-        case .failed: return "Failed"
-        }
-    }
-}
-
 struct CPUUsageSnapshot {
     var user: Double = 0
     var system: Double = 0
@@ -89,7 +50,6 @@ final class SystemMetricsMonitor {
     private(set) var topMemoryProcesses: [ProcessMetric] = []
     private(set) var loadAverages: [Double] = [0, 0, 0]
     private(set) var uptime: TimeInterval = ProcessInfo.processInfo.systemUptime
-    private(set) var cpuFrequencyMHz: Double?
     private(set) var cpuTemperature: Double?
 
     private struct CPUTicks {
@@ -122,7 +82,6 @@ final class SystemMetricsMonitor {
         topMemoryProcesses = Self.memoryProcessMetrics(from: processes)
         loadAverages = Self.readLoadAverages()
         cpuTemperature = hardwareMonitor.readTemperature()
-        cpuFrequencyMHz = hardwareMonitor.readFrequencyMHz()
     }
 
     func tick(minimumInterval: TimeInterval = 0.75) {
@@ -136,7 +95,6 @@ final class SystemMetricsMonitor {
         loadAverages = Self.readLoadAverages()
         uptime = ProcessInfo.processInfo.systemUptime
         cpuTemperature = hardwareMonitor.readTemperature()
-        cpuFrequencyMHz = hardwareMonitor.readFrequencyMHz()
 
         append(cpu.used, to: &cpuHistory)
         append(memory.usedFraction, to: &memoryHistory)
@@ -191,36 +149,6 @@ final class SystemMetricsMonitor {
             uniqueKeysWithValues: snapshots.map { ($0.pid, $0.cpuTimeNanoseconds) }
         )
         topMemoryProcesses = Self.memoryProcessMetrics(from: snapshots)
-    }
-
-    func requestTermination(of process: ProcessMetric, force: Bool) -> ProcessTerminationResult {
-        guard process.canTerminate, let expectedIdentity = process.identity else {
-            return .blocked
-        }
-        guard let currentIdentity = Self.processIdentity(for: process.pid) else {
-            return .notRunning
-        }
-        guard currentIdentity == expectedIdentity else {
-            return .processChanged
-        }
-
-        if !force,
-           let application = NSRunningApplication(processIdentifier: process.pid),
-           application.terminate() {
-            return .requested
-        }
-
-        errno = 0
-        let signal = force ? SIGKILL : SIGTERM
-        if Darwin.kill(process.pid, signal) == 0 {
-            return force ? .forceRequested : .requested
-        }
-
-        switch errno {
-        case EPERM: return .permissionDenied
-        case ESRCH: return .notRunning
-        default: return .failed(errno)
-        }
     }
 
     private func append(_ value: Double, to history: inout [Double]) {
@@ -347,25 +275,7 @@ final class SystemMetricsMonitor {
         ProcessMetric(
             pid: pid,
             name: processName(for: pid),
-            value: value,
-            identity: processIdentity(for: pid)
-        )
-    }
-
-    static func processIdentity(for pid: pid_t) -> ProcessIdentity? {
-        guard pid > 0 else { return nil }
-        var info = proc_bsdinfo()
-        let expectedSize = MemoryLayout<proc_bsdinfo>.stride
-        let copied = withUnsafeMutablePointer(to: &info) { pointer in
-            proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, pointer, Int32(expectedSize))
-        }
-        guard copied == expectedSize, info.pbi_pid == UInt32(pid) else { return nil }
-
-        return ProcessIdentity(
-            pid: pid,
-            ownerUID: info.pbi_uid,
-            startSeconds: info.pbi_start_tvsec,
-            startMicroseconds: info.pbi_start_tvusec
+            value: value
         )
     }
 

@@ -74,6 +74,11 @@ struct UsageSegment: Identifiable {
     let color: Color
 }
 
+enum MetricRingTypography {
+    case scaled
+    case semantic
+}
+
 struct SegmentedUsageRing: View {
     let segments: [UsageSegment]
     let lineWidth: CGFloat
@@ -130,6 +135,7 @@ struct MetricRingView: View {
     var subtitle: String? = nil
     var symbolName: String? = nil
     var showsTitle = true
+    var typography: MetricRingTypography = .scaled
 
     var body: some View {
         VStack(spacing: max(size * 0.07, 2)) {
@@ -142,21 +148,21 @@ struct MetricRingView: View {
 
                 VStack(spacing: 0) {
                     Text(value)
-                        .font(.system(size: size * 0.24, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(valueFont)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
 
                     if let subtitle {
                         Text(subtitle)
-                            .font(.system(size: size * 0.09, weight: .medium))
+                            .font(subtitleFont)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
 
                     if let symbolName {
                         Image(systemName: symbolName)
-                            .font(.system(size: max(size * 0.16, 8), weight: .semibold))
+                            .font(symbolFont)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -165,7 +171,7 @@ struct MetricRingView: View {
 
             if showsTitle {
                 Text(title)
-                    .font(.system(size: max(size * 0.13, 8), weight: .semibold))
+                    .font(titleFont)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -173,6 +179,42 @@ struct MetricRingView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(value)
+    }
+
+    private var valueFont: Font {
+        switch typography {
+        case .scaled:
+            return .system(size: size * 0.24, weight: .bold, design: .rounded).monospacedDigit()
+        case .semantic:
+            return .title2.bold().monospacedDigit()
+        }
+    }
+
+    private var subtitleFont: Font {
+        switch typography {
+        case .scaled:
+            return .system(size: size * 0.09, weight: .medium)
+        case .semantic:
+            return .caption2.weight(.medium)
+        }
+    }
+
+    private var symbolFont: Font {
+        switch typography {
+        case .scaled:
+            return .system(size: max(size * 0.16, 8), weight: .semibold)
+        case .semantic:
+            return .caption.weight(.semibold)
+        }
+    }
+
+    private var titleFont: Font {
+        switch typography {
+        case .scaled:
+            return .system(size: max(size * 0.13, 8), weight: .semibold)
+        case .semantic:
+            return .caption.weight(.semibold)
+        }
     }
 }
 
@@ -349,11 +391,6 @@ enum SystemValueFormatter {
         let minutes = totalMinutes % 60
         if days > 0 { return "\(days)d \(hours)h \(minutes)m" }
         return "\(hours)h \(minutes)m"
-    }
-
-    static func frequency(_ megahertz: Double?) -> String {
-        guard let megahertz, megahertz.isFinite, megahertz > 0 else { return "--" }
-        return String(format: "%.0f MHz", megahertz)
     }
 
     static func temperature(_ celsius: Double?) -> String {

@@ -108,7 +108,7 @@ struct SystemMonitorPanel: View {
     private var header: some View {
         HStack(spacing: 8) {
             Image(systemName: "gauge.with.dots.needle.67percent")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.headline)
                 .foregroundStyle(
                     LinearGradient(
                         colors: [SystemMonitorPalette.cpuUser, SystemMonitorPalette.memoryCompressed],
@@ -118,7 +118,7 @@ struct SystemMonitorPanel: View {
                 )
 
             Text("CPU & Memory")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.headline)
 
             Spacer()
             SystemLivePulseDot(color: SystemMonitorPalette.cpuUser)
@@ -161,7 +161,13 @@ struct SystemMonitorPanel: View {
     }
 
     private func panelMetricRing(title: String, value: String, segments: [UsageSegment]) -> some View {
-        MetricRingView(title: title, value: value, segments: segments, size: 88)
+        MetricRingView(
+            title: title,
+            value: value,
+            segments: segments,
+            size: 88,
+            typography: .semantic
+        )
             .frame(maxWidth: .infinity)
             .padding(.vertical, 11)
     }
@@ -199,11 +205,11 @@ struct SystemMonitorPanel: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(title)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(value)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.caption2.weight(.semibold).monospaced())
             }
             SystemHistoryChart(data: data, color: color)
                 .frame(height: 48)
@@ -233,8 +239,6 @@ struct SystemMonitorPanel: View {
                     value: monitor.loadAverages.map { String(format: "%.2f", $0) }.joined(separator: "  ")
                 )
                 divider
-                detailRow("Frequency", value: SystemValueFormatter.frequency(monitor.cpuFrequencyMHz))
-                divider
                 detailRow("Uptime", value: SystemValueFormatter.uptime(monitor.uptime))
                 divider
                 statusDetailRow(
@@ -259,9 +263,9 @@ struct SystemMonitorPanel: View {
                         .foregroundStyle(.secondary)
                     Spacer()
                     Text("\(SystemValueFormatter.bytes(monitor.memory.used)) / \(SystemValueFormatter.bytes(monitor.memory.total))")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .font(.callout.weight(.semibold).monospaced())
                 }
-                .font(.system(size: 12))
+                .font(.callout)
 
                 GeometryReader { geometry in
                     HStack(spacing: 0) {
@@ -298,11 +302,11 @@ struct SystemMonitorPanel: View {
 
                 HStack {
                     Text("Pressure")
-                        .font(.system(size: 11))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
                     Text(monitor.memory.pressure.rawValue)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(pressureColor)
                 }
             }
@@ -326,7 +330,7 @@ struct SystemMonitorPanel: View {
 
             if processes.isEmpty {
                 Text("Collecting process samples…")
-                    .font(.system(size: 11))
+                    .font(.caption)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(11)
@@ -343,10 +347,7 @@ struct SystemMonitorPanel: View {
                             process: process,
                             symbol: symbol,
                             formattedValue: value(process),
-                            color: color,
-                            requestTermination: { force in
-                                monitor.requestTermination(of: process, force: force)
-                            }
+                            color: color
                         )
                         if index != processes.count - 1 {
                             divider.padding(.leading, 30)
@@ -371,11 +372,11 @@ struct SystemMonitorPanel: View {
                     .frame(width: 8, height: 8)
             }
             Text(label)
-                .font(.system(size: 11))
+                .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.caption.weight(.semibold).monospaced())
                 .foregroundStyle(.primary)
         }
         .padding(.horizontal, 11)
@@ -385,11 +386,11 @@ struct SystemMonitorPanel: View {
     private func statusDetailRow(_ label: String, value: String, valueColor: Color) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 11))
+                .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.caption.weight(.semibold).monospaced())
                 .foregroundStyle(valueColor)
         }
         .padding(.horizontal, 11)
@@ -402,11 +403,11 @@ struct SystemMonitorPanel: View {
                 .fill(color)
                 .frame(width: 10, height: 10)
             Text(label)
-                .font(.system(size: 11))
+                .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
             Text(SystemValueFormatter.bytes(value))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.caption.weight(.semibold).monospaced())
         }
     }
 
@@ -444,7 +445,7 @@ struct SystemMonitorPanel: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(size: 10, weight: .semibold))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
             .kerning(0.4)
     }
@@ -508,21 +509,18 @@ private struct ProcessUsageRow: View {
     let symbol: String
     let formattedValue: String
     let color: Color
-    let requestTermination: (Bool) -> ProcessTerminationResult
 
     @State private var hovering = false
-    @State private var showingTerminationConfirmation = false
-    @State private var terminationResult: ProcessTerminationResult?
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(color)
                 .frame(width: 14)
 
             Text(process.name)
-                .font(.system(size: 11, weight: .medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -530,33 +528,18 @@ private struct ProcessUsageRow: View {
             Spacer(minLength: 8)
 
             if hovering {
-                HStack(spacing: 4) {
-                    Text(terminationResult?.displayText ?? "PID \(process.pid)")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(terminationResult == nil ? color : terminationResultColor)
-
-                    if process.canTerminate {
-                        Button {
-                            showingTerminationConfirmation = true
-                        } label: {
-                            Image(systemName: "stop.circle.fill")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(SystemMonitorPalette.destructive)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Terminate \(process.name) (PID \(process.pid))")
-                        .accessibilityLabel("Terminate \(process.name)")
-                    }
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    Capsule()
-                        .fill((terminationResult == nil ? color : terminationResultColor).opacity(0.12))
-                )
+                Text(verbatim: "PID \(process.pid)")
+                    .font(.caption.weight(.semibold).monospaced())
+                    .foregroundStyle(color)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(color.opacity(0.12))
+                    )
             } else {
                 Text(formattedValue)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.caption.weight(.semibold).monospaced())
                     .foregroundStyle(.primary)
             }
         }
@@ -565,30 +548,5 @@ private struct ProcessUsageRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .help("PID: \(process.pid)")
-        .confirmationDialog(
-            "Terminate \(process.name)?",
-            isPresented: $showingTerminationConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Terminate", role: .destructive) {
-                terminationResult = requestTermination(false)
-            }
-            Button("Force Quit", role: .destructive) {
-                terminationResult = requestTermination(true)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("PID \(process.pid). Terminate requests a normal quit; Force Quit ends it immediately.")
-        }
-    }
-
-    private var terminationResultColor: Color {
-        switch terminationResult {
-        case .requested: return SystemMonitorPalette.statusWarning
-        case .forceRequested: return SystemMonitorPalette.destructive
-        case .blocked, .permissionDenied, .processChanged, .notRunning, .failed:
-            return SystemMonitorPalette.destructive
-        case nil: return color
-        }
     }
 }

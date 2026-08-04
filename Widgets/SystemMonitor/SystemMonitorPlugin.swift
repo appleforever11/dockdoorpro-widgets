@@ -5,7 +5,7 @@ final class SystemMonitorPlugin: WidgetPlugin, DockDoorWidgetProvider {
     var id: String { "system-monitor-cpu-memory" }
     var name: String { "CPU & Memory" }
     var iconSymbol: String { "gauge.with.dots.needle.67percent" }
-    var widgetDescription: String { "Live CPU and memory rings. Hover for temperature, frequency, history, and top processes." }
+    var widgetDescription: String { "Live CPU and memory rings. Hover for temperature, history, and top processes." }
     var supportedOrientations: [WidgetOrientation] { [.horizontal, .vertical] }
 
     private let monitor = SystemMetricsMonitor()
