@@ -88,7 +88,14 @@ final class PomodoroTimerModel {
         guard runState == .running, let endDate else {
             return storedRemainingSeconds
         }
-        return max(0, Int(ceil(endDate.timeIntervalSince(date))))
+        let calculatedSeconds = max(
+            0,
+            Int(ceil(endDate.timeIntervalSince(date)))
+        )
+        // A tap can occur between TimelineView ticks, so its current display
+        // date may briefly predate the start date by almost one second. Keep
+        // that stale tick from showing one second more than the started value.
+        return min(storedRemainingSeconds, calculatedSeconds)
     }
 
     func remainingFraction(at date: Date) -> Double {
