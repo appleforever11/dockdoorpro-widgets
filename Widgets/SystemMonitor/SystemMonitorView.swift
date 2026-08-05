@@ -102,7 +102,7 @@ struct SystemMonitorView: View {
                     memoryRing
                 }
             } else if showCPU && showMemory {
-                HStack(spacing: dim * 0.16) {
+                HStack(spacing: dim * 0.24) {
                     cpuRing
                     memoryRing
                 }
@@ -115,34 +115,86 @@ struct SystemMonitorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(dim * 0.08)
+        .padding(.vertical, dim * 0.08)
+        .padding(
+            .horizontal,
+            showCPU && showMemory && !isVertical ? dim * 0.04 : dim * 0.08
+        )
     }
 
     private var tripleLayout: some View {
         Group {
             if showCPU && showMemory && isVertical {
                 VStack(spacing: dim * 0.12) {
-                    tripleCPUMetric
-                    tripleMemoryMetric
+                    tripleCPUMetric()
+                    tripleMemoryMetric()
                 }
             } else if showCPU && showMemory {
-                HStack(spacing: dim * WidgetMetrics.spacingScale) {
-                    tripleCPUMetric
-                    tripleMemoryMetric
+                ViewThatFits(in: .horizontal) {
+                    tripleMetricsRow(
+                        groupSpacingScale: 0.14,
+                        ringScale: 0.82,
+                        metricSpacingScale: 0.12,
+                        detailFontScale: 0.12,
+                        labelFontScale: 0.07
+                    )
+                    tripleMetricsRow(
+                        groupSpacingScale: 0.10,
+                        ringScale: 0.80,
+                        metricSpacingScale: 0.10,
+                        detailFontScale: 0.105,
+                        labelFontScale: 0.06
+                    )
+                    tripleMetricsRow(
+                        groupSpacingScale: 0.06,
+                        ringScale: 0.76,
+                        metricSpacingScale: 0.08,
+                        detailFontScale: 0.095,
+                        labelFontScale: 0.055
+                    )
                 }
             } else if showCPU {
-                tripleCPUMetric
+                tripleCPUMetric()
             } else if showMemory {
-                tripleMemoryMetric
+                tripleMemoryMetric()
             } else {
                 Color.clear
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(isVertical ? dim * 0.04 : dim * 0.08)
+        .padding(dim * 0.04)
     }
 
-    private var tripleCPUMetric: some View {
+    private func tripleMetricsRow(
+        groupSpacingScale: CGFloat,
+        ringScale: CGFloat,
+        metricSpacingScale: CGFloat,
+        detailFontScale: CGFloat,
+        labelFontScale: CGFloat
+    ) -> some View {
+        HStack(spacing: dim * groupSpacingScale) {
+            tripleCPUMetric(
+                ringScale: ringScale,
+                metricSpacingScale: metricSpacingScale,
+                detailFontScale: detailFontScale,
+                labelFontScale: labelFontScale
+            )
+            tripleMemoryMetric(
+                ringScale: ringScale,
+                metricSpacingScale: metricSpacingScale,
+                detailFontScale: detailFontScale,
+                labelFontScale: labelFontScale
+            )
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func tripleCPUMetric(
+        ringScale: CGFloat = 0.82,
+        metricSpacingScale: CGFloat = 0.12,
+        detailFontScale: CGFloat = 0.12,
+        labelFontScale: CGFloat = 0.07
+    ) -> some View {
         tripleMetric(
             title: "CPU",
             symbolName: "cpu.fill",
@@ -150,11 +202,20 @@ struct SystemMonitorView: View {
             segments: cpuSegments,
             detail: SystemValueFormatter.temperature(monitor.cpuTemperature),
             detailLabel: "Temperature",
-            detailColor: cpuTemperatureColor
+            detailColor: cpuTemperatureColor,
+            ringScale: ringScale,
+            metricSpacingScale: metricSpacingScale,
+            detailFontScale: detailFontScale,
+            labelFontScale: labelFontScale
         )
     }
 
-    private var tripleMemoryMetric: some View {
+    private func tripleMemoryMetric(
+        ringScale: CGFloat = 0.82,
+        metricSpacingScale: CGFloat = 0.12,
+        detailFontScale: CGFloat = 0.12,
+        labelFontScale: CGFloat = 0.07
+    ) -> some View {
         tripleMetric(
             title: "Memory",
             symbolName: "memorychip.fill",
@@ -162,7 +223,11 @@ struct SystemMonitorView: View {
             segments: memorySegments,
             detail: monitor.memory.pressure.rawValue,
             detailLabel: "Pressure",
-            detailColor: memoryPressureColor
+            detailColor: memoryPressureColor,
+            ringScale: ringScale,
+            metricSpacingScale: metricSpacingScale,
+            detailFontScale: detailFontScale,
+            labelFontScale: labelFontScale
         )
     }
 
@@ -173,34 +238,56 @@ struct SystemMonitorView: View {
         segments: [UsageSegment],
         detail: String,
         detailLabel: String,
-        detailColor: Color
+        detailColor: Color,
+        ringScale: CGFloat,
+        metricSpacingScale: CGFloat,
+        detailFontScale: CGFloat,
+        labelFontScale: CGFloat
     ) -> some View {
-        HStack(spacing: dim * 0.04) {
+        HStack(spacing: dim * (isVertical ? 0.04 : metricSpacingScale)) {
             MetricRingView(
                 title: title,
                 value: value,
                 segments: segments,
-                size: dim * (isVertical ? 0.48 : WidgetMetrics.contentScale),
+                size: dim * ringScale,
+                symbolName: symbolName,
                 showsTitle: false
             )
 
-            VStack(alignment: .leading, spacing: max(dim * 0.025, 1)) {
-                Image(systemName: symbolName)
-                    .font(.system(size: max(dim * 0.14, 8), weight: .semibold))
-                    .foregroundStyle(.secondary)
-
+            VStack(alignment: .leading, spacing: max(dim * 0.018, 1)) {
                 Text(detail)
-                    .font(.system(size: max(dim * 0.105, 7), weight: .semibold, design: .rounded))
+                    .font(.system(
+                        size: max(dim * (isVertical ? 0.105 : detailFontScale), 8),
+                        weight: .semibold,
+                        design: .rounded
+                    ))
                     .foregroundStyle(detailColor)
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                if !isVertical {
+                    Text(compactDetailLabel(detailLabel))
+                        .font(.system(
+                            size: max(dim * labelFontScale, 6),
+                            weight: .medium,
+                            design: .rounded
+                        ))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
-            .lineLimit(1)
-            .minimumScaleFactor(0.65)
+            .layoutPriority(1)
         }
-        .frame(maxWidth: .infinity, alignment: .center)
+        .fixedSize(horizontal: !isVertical, vertical: false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue("\(value), \(detailLabel) \(detail)")
+    }
+
+    private func compactDetailLabel(_ label: String) -> String {
+        label == "Temperature" ? "TEMP" : label.uppercased()
     }
 
     private func compactSingleRing(
@@ -237,7 +324,7 @@ struct SystemMonitorView: View {
             title: "CPU",
             value: SystemValueFormatter.percent(monitor.cpu.used),
             segments: cpuSegments,
-            size: dim * WidgetMetrics.contentScale,
+            size: dim * 0.82,
             symbolName: "cpu.fill",
             showsTitle: false
         )
@@ -248,7 +335,7 @@ struct SystemMonitorView: View {
             title: "Memory",
             value: SystemValueFormatter.percent(monitor.memory.usedFraction),
             segments: memorySegments,
-            size: dim * WidgetMetrics.contentScale,
+            size: dim * 0.82,
             symbolName: "memorychip.fill",
             showsTitle: false
         )

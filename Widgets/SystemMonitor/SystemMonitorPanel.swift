@@ -99,10 +99,6 @@ struct SystemMonitorPanel: View {
             .clipped()
         }
         .background(panelBackground)
-        .overlay(panelBorder)
-        .shadow(color: SystemMonitorPalette.cpuUser.opacity(0.12), radius: 20, x: -4)
-        .shadow(color: SystemMonitorPalette.memoryCompressed.opacity(0.10), radius: 20, x: 4)
-        .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
     }
 
     private var header: some View {
@@ -470,36 +466,17 @@ struct SystemMonitorPanel: View {
 
     private var panelBackground: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
+            Rectangle()
                 .fill(.ultraThinMaterial)
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            SystemMonitorPalette.cpuUser.opacity(0.07),
-                            Color.clear,
-                            SystemMonitorPalette.memoryCompressed.opacity(0.05),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        }
-    }
-
-    private var panelBorder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.05), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 1
-                )
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            LinearGradient(
+                colors: [
+                    SystemMonitorPalette.cpuUser.opacity(0.07),
+                    Color.clear,
+                    SystemMonitorPalette.memoryCompressed.opacity(0.05),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 }

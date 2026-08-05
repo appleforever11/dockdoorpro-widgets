@@ -142,9 +142,8 @@ struct MetricRingView: View {
             ZStack {
                 SegmentedUsageRing(
                     segments: segments,
-                    lineWidth: max(size * 0.13, 3)
+                    lineWidth: max(size * 0.10, 3)
                 )
-                .padding(size * 0.09)
 
                 VStack(spacing: 0) {
                     Text(value)
