@@ -79,7 +79,7 @@ struct PomodoroDockView: View {
             if isVertical {
                 VStack(spacing: dim * WidgetMetrics.spacingScale) {
                     countdownRing(
-                        size: dim * WidgetMetrics.contentScale * 0.68,
+                        size: dim * 0.82,
                         compact: false,
                         at: date
                     )
@@ -88,11 +88,12 @@ struct PomodoroDockView: View {
             } else {
                 HStack(spacing: dim * WidgetMetrics.spacingScale) {
                     countdownRing(
-                        size: dim * WidgetMetrics.contentScale * 0.76,
+                        size: dim * 0.82,
                         compact: false,
                         at: date
                     )
                     statusSummary(alignment: .leading, compact: false, at: date)
+                        .layoutPriority(1)
                 }
             }
         }
@@ -103,7 +104,7 @@ struct PomodoroDockView: View {
             if isVertical {
                 VStack(spacing: dim * WidgetMetrics.spacingScale) {
                     countdownRing(
-                        size: dim * WidgetMetrics.contentScale * 0.73,
+                        size: dim * 0.82,
                         compact: false,
                         at: date
                     )
@@ -111,15 +112,17 @@ struct PomodoroDockView: View {
                     dailyGoalView(horizontal: false)
                 }
             } else {
-                HStack(spacing: dim * WidgetMetrics.spacingScale * 1.25) {
+                HStack(spacing: dim * WidgetMetrics.spacingScale) {
                     countdownRing(
-                        size: dim * WidgetMetrics.contentScale * 0.79,
+                        size: dim * 0.82,
                         compact: false,
                         at: date
                     )
                     statusSummary(alignment: .leading, compact: false, at: date)
+                        .frame(minWidth: dim * 0.70, alignment: .leading)
+                        .layoutPriority(1)
                     dailyGoalView(horizontal: true)
-                        .frame(maxWidth: dim * 0.95)
+                        .frame(width: dim * 1.16)
                 }
             }
         }
@@ -130,9 +133,13 @@ struct PomodoroDockView: View {
         compact: Bool,
         at date: Date
     ) -> some View {
-        ZStack {
+        let lineWidth = compact
+            ? ringSize * 0.105
+            : max(ringSize * 0.10, 3)
+
+        return ZStack {
             Circle()
-                .stroke(phaseColor.opacity(0.14), lineWidth: ringSize * 0.105)
+                .stroke(phaseColor.opacity(0.14), lineWidth: lineWidth)
 
             Circle()
                 .trim(
@@ -145,7 +152,7 @@ struct PomodoroDockView: View {
                         center: .center
                     ),
                     style: StrokeStyle(
-                        lineWidth: ringSize * 0.105,
+                        lineWidth: lineWidth,
                         lineCap: .round
                     )
                 )
@@ -227,8 +234,9 @@ struct PomodoroDockView: View {
                             ),
                             weight: .bold
                         ))
-                    Text(verbatim: model.statusText)
+                    Text(verbatim: dockStatusText)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 .font(.system(
                     size: max(8, dim * 0.11),
@@ -248,7 +256,7 @@ struct PomodoroDockView: View {
             HStack(spacing: 4) {
                 Image(systemName: "flame.fill")
                     .font(.system(
-                        size: dim * WidgetMetrics.sfSymbolScale * 0.18,
+                        size: dim * WidgetMetrics.sfSymbolScale * (horizontal ? 0.27 : 0.18),
                         weight: .semibold
                     ))
                     .foregroundStyle(palette.secondary)
@@ -256,7 +264,10 @@ struct PomodoroDockView: View {
                     .fontWeight(.bold)
                     .monospacedDigit()
             }
-            .font(.system(size: dim * 0.105, weight: .semibold))
+            .font(.system(
+                size: dim * (horizontal ? 0.16 : 0.105),
+                weight: .semibold
+            ))
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -267,13 +278,12 @@ struct PomodoroDockView: View {
                         .frame(width: proxy.size.width * model.dailyProgress)
                 }
             }
-            .frame(height: max(3, dim * 0.045))
-
-            Text(verbatim: "TODAY")
-                .font(.system(size: dim * 0.07, weight: .bold))
-                .foregroundStyle(.secondary)
-                .kerning(0.25)
+            .frame(height: max(3, dim * (horizontal ? 0.07 : 0.045)))
         }
+    }
+
+    private var dockStatusText: String {
+        model.isRunning ? "Running" : model.statusText
     }
 
     private var statusColor: Color {
