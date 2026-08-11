@@ -47,6 +47,29 @@ enum PomodoroRunState: String, Codable {
     case paused
 }
 
+enum PomodoroAlertStrength: String, CaseIterable {
+    case off = "Off"
+    case gentle = "Gentle"
+    case noticeable = "Noticeable"
+    case persistent = "Persistent"
+}
+
+enum PomodoroGlowDuration: String, CaseIterable {
+    case tenSeconds = "10 Seconds"
+    case thirtySeconds = "30 Seconds"
+    case oneMinute = "1 Minute"
+    case untilAcknowledged = "Until Acknowledged"
+
+    var interval: TimeInterval? {
+        switch self {
+        case .tenSeconds: return 10
+        case .thirtySeconds: return 30
+        case .oneMinute: return 60
+        case .untilAcknowledged: return nil
+        }
+    }
+}
+
 private struct PomodoroSavedState: Codable {
     var phase: PomodoroPhase
     var runState: PomodoroRunState
@@ -66,14 +89,18 @@ final class PomodoroTimerModel {
     private(set) var completedToday = 0
     private(set) var cycleFocusCount = 0
     private(set) var completionPulse = 0
+    private(set) var isAwaitingAcknowledgement = false
 
     let widgetId: String
 
     private var storedRemainingSeconds = 25 * 60
     private var endDate: Date?
+    private var completionAlertGeneration = 0
+    private var attentionGlowGeneration = 0
 
     init(widgetId: String) {
         self.widgetId = widgetId
+        migrateLegacySoundPreference()
         restore()
         let now = Date()
         normalizeDayIfNeeded(at: now)
@@ -133,6 +160,9 @@ final class PomodoroTimerModel {
     }
 
     var statusText: String {
+        if isAwaitingAcknowledgement {
+            return "Completed"
+        }
         switch runState {
         case .idle:
             return "Ready"
@@ -196,6 +226,7 @@ final class PomodoroTimerModel {
     func start(at date: Date = Date()) {
         normalizeDayIfNeeded(at: date)
         synchronizeIdleDuration()
+        acknowledgeCompletion()
         if storedRemainingSeconds <= 0 {
             configureCurrentPhase()
         }
@@ -206,6 +237,7 @@ final class PomodoroTimerModel {
 
     func pause(at date: Date = Date()) {
         guard runState == .running else { return }
+        acknowledgeCompletion()
         storedRemainingSeconds = remainingSeconds(at: date)
         runState = .paused
         endDate = nil
@@ -213,6 +245,7 @@ final class PomodoroTimerModel {
     }
 
     func reset() {
+        acknowledgeCompletion()
         runState = .idle
         endDate = nil
         configureCurrentPhase()
@@ -220,6 +253,7 @@ final class PomodoroTimerModel {
     }
 
     func skip() {
+        acknowledgeCompletion()
         runState = .idle
         endDate = nil
         phase = nextPhase
@@ -229,6 +263,7 @@ final class PomodoroTimerModel {
 
     func selectPhase(_ newPhase: PomodoroPhase) {
         guard newPhase != phase || runState != .idle else { return }
+        acknowledgeCompletion()
         phase = newPhase
         runState = .idle
         endDate = nil
@@ -239,17 +274,15 @@ final class PomodoroTimerModel {
     private func finishCurrentPhase(at date: Date, playSound: Bool) {
         let completedPhase = phase
 
+        cancelScheduledCompletionSounds()
+        beginCompletionAttention()
+
         if completedPhase == .focus {
             completedToday += 1
             cycleFocusCount += 1
         }
 
-        if playSound,
-           WidgetDefaults.bool(
-               key: "playSound",
-               widgetId: widgetId,
-               default: true
-           ) {
+        if playSound {
             playCompletionSound()
         }
 
@@ -337,6 +370,7 @@ final class PomodoroTimerModel {
     }
 
     private func resetForNewDay(at date: Date) {
+        acknowledgeCompletion()
         phase = .focus
         runState = .idle
         endDate = nil
@@ -398,6 +432,9 @@ final class PomodoroTimerModel {
         endDate = saved.endDate
         completedToday = max(0, saved.completedToday)
         cycleFocusCount = max(0, saved.cycleFocusCount)
+        // Completion attention is intentionally session-only. Restarting the
+        // host clears the glow instead of restoring a stale acknowledgement.
+        isAwaitingAcknowledgement = false
 
         let now = Date()
         if saved.dayKey != Self.dayKey(for: now) {
@@ -406,35 +443,117 @@ final class PomodoroTimerModel {
     }
 
     private func playCompletionSound() {
-        // A single system chime is easy to miss when the user is focused or
-        // listening at a low volume. Use a short, distinctive three-tone
-        // pattern that remains bounded and respects the system sound volume.
-        let pattern: [(delay: TimeInterval, name: String)] = [
-            (0, "Hero"),
-            (1.35, "Ping"),
-            (3.0, "Hero"),
-        ]
+        let strength = configuredAlertStrength()
 
-        for tone in pattern {
-            let playTone = {
-                if let sound = NSSound(named: NSSound.Name(tone.name)) {
-                    sound.volume = 1
-                    sound.play()
-                } else {
-                    NSSound.beep()
-                }
-            }
+        let pattern: [(delay: TimeInterval, name: String)]
+        let cycleOffsets: [TimeInterval]
+        switch strength {
+        case .off:
+            return
+        case .gentle:
+            pattern = [
+                (0, "Hero"),
+                (1.35, "Ping"),
+                (3.0, "Hero"),
+            ]
+            cycleOffsets = [0]
+        case .noticeable:
+            pattern = Self.noticeableSoundPattern
+            cycleOffsets = [0]
+        case .persistent:
+            pattern = Self.noticeableSoundPattern
+            // Keep the reminder bounded: at most three cycles, and stop as
+            // soon as the user acknowledges the completed phase.
+            cycleOffsets = [0, 25, 50]
+        }
 
-            if tone.delay == 0 {
-                playTone()
-            } else {
+        completionAlertGeneration &+= 1
+        let generation = completionAlertGeneration
+        for cycleOffset in cycleOffsets {
+            for tone in pattern {
                 DispatchQueue.main.asyncAfter(
-                    deadline: .now() + tone.delay,
-                    execute: playTone
-                )
+                    deadline: .now() + cycleOffset + tone.delay
+                ) { [weak self] in
+                    guard let self,
+                          self.completionAlertGeneration == generation,
+                          self.configuredAlertStrength() == strength else { return }
+                    self.playSystemSound(named: tone.name)
+                }
             }
         }
     }
+
+    private func beginCompletionAttention() {
+        attentionGlowGeneration &+= 1
+        let generation = attentionGlowGeneration
+        isAwaitingAcknowledgement = true
+
+        let duration = PomodoroGlowDuration(
+            rawValue: WidgetDefaults.string(
+                key: "glowDuration",
+                widgetId: widgetId,
+                default: PomodoroGlowDuration.thirtySeconds.rawValue
+            )
+        ) ?? .thirtySeconds
+        guard let interval = duration.interval else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + interval) { [weak self] in
+            guard let self,
+                  self.attentionGlowGeneration == generation else { return }
+            self.isAwaitingAcknowledgement = false
+        }
+    }
+
+    private func acknowledgeCompletion() {
+        isAwaitingAcknowledgement = false
+        attentionGlowGeneration &+= 1
+        cancelScheduledCompletionSounds()
+    }
+
+    private func cancelScheduledCompletionSounds() {
+        completionAlertGeneration &+= 1
+    }
+
+    private func configuredAlertStrength() -> PomodoroAlertStrength {
+        PomodoroAlertStrength(
+            rawValue: WidgetDefaults.string(
+                key: "alertStrength",
+                widgetId: widgetId,
+                default: PomodoroAlertStrength.noticeable.rawValue
+            )
+        ) ?? .noticeable
+    }
+
+    private func migrateLegacySoundPreference() {
+        let defaults = UserDefaults.standard
+        let legacyKey = "widget.\(widgetId).playSound"
+        guard defaults.object(forKey: legacyKey) != nil else { return }
+
+        if !defaults.bool(forKey: legacyKey) {
+            defaults.set(
+                PomodoroAlertStrength.off.rawValue,
+                forKey: "widget.\(widgetId).alertStrength"
+            )
+        }
+        defaults.removeObject(forKey: legacyKey)
+    }
+
+    private func playSystemSound(named name: String) {
+        if let sound = NSSound(named: NSSound.Name(name)) {
+            sound.volume = 1
+            sound.play()
+        } else {
+            NSSound.beep()
+        }
+    }
+
+    private static let noticeableSoundPattern: [(delay: TimeInterval, name: String)] = [
+        (0, "Hero"),
+        (1.25, "Ping"),
+        (2.6, "Hero"),
+        (5.2, "Ping"),
+        (8.0, "Hero"),
+    ]
 
     private static func stateStorageKey(_ widgetId: String) -> String {
         "widget.\(widgetId).timerState"

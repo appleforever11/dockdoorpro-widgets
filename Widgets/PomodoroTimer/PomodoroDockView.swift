@@ -67,11 +67,6 @@ struct PomodoroDockView: View {
             compact: true,
             at: date
         )
-            .scaleEffect(model.completionPulse.isMultiple(of: 2) ? 1 : 1.035)
-            .animation(
-                .spring(response: 0.32, dampingFraction: 0.62),
-                value: model.completionPulse
-            )
     }
 
     private func extendedLayout(at date: Date) -> some View {
@@ -198,6 +193,10 @@ struct PomodoroDockView: View {
                 .offset(x: ringSize * 0.015, y: -ringSize * 0.015)
         }
         .frame(width: ringSize, height: ringSize)
+        .modifier(PomodoroAttentionBreathingModifier(
+            isActive: model.isAwaitingAcknowledgement,
+            color: phaseColor
+        ))
     }
 
     private func statusSummary(
@@ -225,24 +224,30 @@ struct PomodoroDockView: View {
                 .minimumScaleFactor(0.62)
 
             if !compact {
-                HStack(spacing: 3) {
+                HStack(spacing: model.isAwaitingAcknowledgement ? 2 : 3) {
                     Image(systemName: model.isRunning ? "play.fill" : (model.isPaused ? "pause.fill" : "circle"))
                         .font(.system(
                             size: max(
-                                7,
-                                dim * WidgetMetrics.sfSymbolScale * 0.16
+                                model.isAwaitingAcknowledgement ? 6.5 : 7,
+                                dim * WidgetMetrics.sfSymbolScale
+                                    * (model.isAwaitingAcknowledgement ? 0.13 : 0.16)
                             ),
                             weight: .bold
                         ))
                     Text(verbatim: dockStatusText)
+                        .font(.system(
+                            size: max(
+                                model.isAwaitingAcknowledgement ? 7 : 8,
+                                dim * (model.isAwaitingAcknowledgement ? 0.095 : 0.11)
+                            ),
+                            weight: .semibold,
+                            design: .rounded
+                        ))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.55)
+                        .allowsTightening(true)
+                        .layoutPriority(2)
                 }
-                .font(.system(
-                    size: max(8, dim * 0.11),
-                    weight: .semibold,
-                    design: .rounded
-                ))
                 .foregroundStyle(.secondary)
             }
         }
@@ -283,10 +288,16 @@ struct PomodoroDockView: View {
     }
 
     private var dockStatusText: String {
-        model.isRunning ? "Running" : model.statusText
+        if model.isAwaitingAcknowledgement {
+            return "Completed"
+        }
+        return model.isRunning ? "Running" : model.statusText
     }
 
     private var statusColor: Color {
+        if model.isAwaitingAcknowledgement {
+            return phaseColor
+        }
         switch model.runState {
         case .running:
             return colorScheme == .dark
@@ -297,6 +308,29 @@ struct PomodoroDockView: View {
                 ? Color(red: 0.78, green: 0.50, blue: 0.28)
                 : .orange
         case .idle: return Color.secondary.opacity(0.7)
+        }
+    }
+}
+
+private struct PomodoroAttentionBreathingModifier: ViewModifier {
+    let isActive: Bool
+    let color: Color
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isActive {
+            content.phaseAnimator([false, true]) { view, expanded in
+                view
+                    .scaleEffect(expanded ? 1.055 : 1)
+                    .shadow(
+                        color: color.opacity(expanded ? 0.62 : 0.26),
+                        radius: expanded ? 9 : 3
+                    )
+            } animation: { _ in
+                .easeInOut(duration: 0.82)
+            }
+        } else {
+            content
         }
     }
 }

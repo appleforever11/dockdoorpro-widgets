@@ -58,10 +58,17 @@ final class PomodoroTimerPlugin: WidgetPlugin, DockDoorWidgetProvider {
                 label: "Auto-start Focus Sessions",
                 defaultValue: false
             ),
-            .toggle(
-                key: "playSound",
-                label: "Play Sound When a Session Ends",
-                defaultValue: true
+            .picker(
+                key: "alertStrength",
+                label: "Completion Alert Strength",
+                options: PomodoroAlertStrength.allCases.map(\.rawValue),
+                defaultValue: PomodoroAlertStrength.noticeable.rawValue
+            ),
+            .picker(
+                key: "glowDuration",
+                label: "Completion Glow Duration",
+                options: PomodoroGlowDuration.allCases.map(\.rawValue),
+                defaultValue: PomodoroGlowDuration.thirtySeconds.rawValue
             ),
             .picker(
                 key: "theme",
