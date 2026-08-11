@@ -48,6 +48,13 @@ struct PomodoroDockView: View {
             }
         }
         .padding(dim * WidgetMetrics.spacingScale)
+        .frame(width: size.width, height: size.height)
+        .modifier(PomodoroAttentionBreathingModifier(
+            isActive: model.isAwaitingAcknowledgement,
+            primaryColor: phaseColor,
+            secondaryColor: palette.secondary,
+            cornerRadius: max(8, dim * 0.18)
+        ))
         .animation(
             .easeInOut(duration: 0.28),
             value: model.remainingFraction(at: date)
@@ -193,10 +200,6 @@ struct PomodoroDockView: View {
                 .offset(x: ringSize * 0.015, y: -ringSize * 0.015)
         }
         .frame(width: ringSize, height: ringSize)
-        .modifier(PomodoroAttentionBreathingModifier(
-            isActive: model.isAwaitingAcknowledgement,
-            color: phaseColor
-        ))
     }
 
     private func statusSummary(
@@ -314,23 +317,59 @@ struct PomodoroDockView: View {
 
 private struct PomodoroAttentionBreathingModifier: ViewModifier {
     let isActive: Bool
-    let color: Color
+    let primaryColor: Color
+    let secondaryColor: Color
+    let cornerRadius: CGFloat
 
-    @ViewBuilder
     func body(content: Content) -> some View {
-        if isActive {
-            content.phaseAnimator([false, true]) { view, expanded in
-                view
-                    .scaleEffect(expanded ? 1.055 : 1)
-                    .shadow(
-                        color: color.opacity(expanded ? 0.62 : 0.26),
-                        radius: expanded ? 9 : 3
+        content
+            .background {
+                if isActive {
+                    RoundedRectangle(
+                        cornerRadius: cornerRadius,
+                        style: .continuous
                     )
-            } animation: { _ in
-                .easeInOut(duration: 0.82)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                primaryColor.opacity(0.22),
+                                secondaryColor.opacity(0.16),
+                                primaryColor.opacity(0.12),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: cornerRadius,
+                            style: .continuous
+                        )
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    primaryColor.opacity(0.58),
+                                    secondaryColor.opacity(0.42),
+                                    primaryColor.opacity(0.34),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                    }
+                    .phaseAnimator([false, true]) { glow, expanded in
+                        glow
+                            .opacity(expanded ? 1 : 0.40)
+                            .shadow(
+                                color: primaryColor.opacity(expanded ? 0.40 : 0.16),
+                                radius: expanded ? 9 : 3
+                            )
+                    } animation: { _ in
+                        .easeInOut(duration: 0.82)
+                    }
+                    .transition(.opacity)
+                }
             }
-        } else {
-            content
-        }
     }
 }
