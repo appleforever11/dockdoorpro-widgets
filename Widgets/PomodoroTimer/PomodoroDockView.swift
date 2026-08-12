@@ -11,6 +11,17 @@ struct PomodoroDockView: View {
 
     private var dim: CGFloat { min(size.width, size.height) }
 
+    /// Give the countdown ring and its status copy distinct visual regions in
+    /// horizontal layouts. Triple-slot mode keeps a slightly tighter gap so
+    /// its countdown and daily-goal regions can remain comfortably readable.
+    private var horizontalRingMetricSpacing: CGFloat {
+        dim * (isHorizontalTriple ? 0.13 : 0.18)
+    }
+
+    private var isHorizontalTriple: Bool {
+        slotSpan == .triple && !isVertical
+    }
+
     private var slotSpan: WidgetSlotSpan {
         WidgetSlotSpan.detect(size: size, isVertical: isVertical)
     }
@@ -88,7 +99,7 @@ struct PomodoroDockView: View {
                     statusSummary(alignment: .center, compact: true, at: date)
                 }
             } else {
-                HStack(spacing: dim * WidgetMetrics.spacingScale) {
+                HStack(spacing: horizontalRingMetricSpacing) {
                     countdownRing(
                         size: dim * 0.82,
                         compact: false,
@@ -114,17 +125,17 @@ struct PomodoroDockView: View {
                     dailyGoalView(horizontal: false)
                 }
             } else {
-                HStack(spacing: dim * WidgetMetrics.spacingScale) {
+                HStack(spacing: horizontalRingMetricSpacing) {
                     countdownRing(
                         size: dim * 0.82,
                         compact: false,
                         at: date
                     )
                     statusSummary(alignment: .leading, compact: false, at: date)
-                        .frame(minWidth: dim * 0.70, alignment: .leading)
+                        .frame(minWidth: dim * 0.88, alignment: .leading)
                         .layoutPriority(1)
                     dailyGoalView(horizontal: true)
-                        .frame(width: dim * 1.16)
+                        .frame(width: dim * 1.08)
                 }
             }
         }
@@ -210,7 +221,7 @@ struct PomodoroDockView: View {
         VStack(alignment: alignment, spacing: compact ? 0 : 1) {
             Text(verbatim: model.phase.compactTitle)
                 .font(.system(
-                    size: dim * (compact ? 0.105 : 0.12),
+                    size: dim * (compact ? 0.105 : (isHorizontalTriple ? 0.13 : 0.12)),
                     weight: .bold,
                     design: .rounded
                 ))
@@ -219,7 +230,7 @@ struct PomodoroDockView: View {
 
             Text(verbatim: model.displayTime(at: date))
                 .font(.system(
-                    size: dim * (compact ? 0.16 : 0.20),
+                    size: dim * (compact ? 0.16 : (isHorizontalTriple ? 0.23 : 0.20)),
                     weight: .bold,
                     design: .rounded
                 ).monospacedDigit())
@@ -241,7 +252,7 @@ struct PomodoroDockView: View {
                         .font(.system(
                             size: max(
                                 model.isAwaitingAcknowledgement ? 7 : 8,
-                                dim * (model.isAwaitingAcknowledgement ? 0.095 : 0.11)
+                                dim * statusTextScale
                             ),
                             weight: .semibold,
                             design: .rounded
@@ -256,6 +267,15 @@ struct PomodoroDockView: View {
         }
     }
 
+    /// Triple-slot layouts have enough horizontal room to restore the
+    /// completion label to the same readable scale as other run states.
+    private var statusTextScale: CGFloat {
+        if model.isAwaitingAcknowledgement {
+            return isHorizontalTriple ? 0.12 : 0.095
+        }
+        return isHorizontalTriple ? 0.12 : 0.11
+    }
+
     private func dailyGoalView(horizontal: Bool) -> some View {
         VStack(
             alignment: horizontal ? .leading : .center,
@@ -264,7 +284,7 @@ struct PomodoroDockView: View {
             HStack(spacing: 4) {
                 Image(systemName: "flame.fill")
                     .font(.system(
-                        size: dim * WidgetMetrics.sfSymbolScale * (horizontal ? 0.27 : 0.18),
+                        size: dim * WidgetMetrics.sfSymbolScale * (horizontal ? 0.28 : 0.18),
                         weight: .semibold
                     ))
                     .foregroundStyle(palette.secondary)
@@ -273,7 +293,7 @@ struct PomodoroDockView: View {
                     .monospacedDigit()
             }
             .font(.system(
-                size: dim * (horizontal ? 0.16 : 0.105),
+                size: dim * (horizontal ? 0.165 : 0.105),
                 weight: .semibold
             ))
 
