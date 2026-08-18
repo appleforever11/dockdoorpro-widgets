@@ -8,6 +8,7 @@ struct SystemMonitorView: View {
     var monitor: SystemMetricsMonitor
 
     private var dim: CGFloat { min(size.width, size.height) }
+    private var compactRingSize: CGFloat { dim * WidgetMetrics.contentScale }
 
     private var showCPU: Bool {
         WidgetDefaults.bool(key: "showCPU", widgetId: widgetId, default: true)
@@ -58,13 +59,16 @@ struct SystemMonitorView: View {
                         segments: cpuSegments,
                         lineWidth: max(dim * 0.10, 3)
                     )
-                    .padding(dim * 0.08)
+                    .frame(width: compactRingSize, height: compactRingSize)
 
                     SegmentedUsageRing(
                         segments: memorySegments,
                         lineWidth: max(dim * 0.075, 2.5)
                     )
-                    .padding(dim * 0.25)
+                    .frame(
+                        width: compactRingSize * 0.52,
+                        height: compactRingSize * 0.52
+                    )
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("CPU and Memory")
@@ -301,7 +305,7 @@ struct SystemMonitorView: View {
                 segments: segments,
                 lineWidth: max(dim * 0.10, 3)
             )
-            .padding(dim * 0.08)
+            .frame(width: compactRingSize, height: compactRingSize)
 
             VStack(spacing: 0) {
                 Text(value)
@@ -314,6 +318,7 @@ struct SystemMonitorView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.65)
         }
+        .frame(width: compactRingSize, height: compactRingSize)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(value)
