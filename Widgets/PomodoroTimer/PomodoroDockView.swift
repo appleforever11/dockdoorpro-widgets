@@ -59,7 +59,6 @@ struct PomodoroDockView: View {
             }
         }
         .padding(dim * WidgetMetrics.spacingScale)
-        .frame(width: size.width, height: size.height)
         .modifier(PomodoroAttentionBreathingModifier(
             isActive: model.isAwaitingAcknowledgement,
             primaryColor: phaseColor,

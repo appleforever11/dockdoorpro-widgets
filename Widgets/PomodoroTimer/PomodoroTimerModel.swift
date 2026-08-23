@@ -100,7 +100,6 @@ final class PomodoroTimerModel {
 
     init(widgetId: String) {
         self.widgetId = widgetId
-        migrateLegacySoundPreference()
         restore()
         let now = Date()
         normalizeDayIfNeeded(at: now)
@@ -524,20 +523,6 @@ final class PomodoroTimerModel {
         ) ?? .noticeable
     }
 
-    private func migrateLegacySoundPreference() {
-        let defaults = UserDefaults.standard
-        let legacyKey = "widget.\(widgetId).playSound"
-        guard defaults.object(forKey: legacyKey) != nil else { return }
-
-        if !defaults.bool(forKey: legacyKey) {
-            defaults.set(
-                PomodoroAlertStrength.off.rawValue,
-                forKey: "widget.\(widgetId).alertStrength"
-            )
-        }
-        defaults.removeObject(forKey: legacyKey)
-    }
-
     private func playSystemSound(named name: String) {
         if let sound = NSSound(named: NSSound.Name(name)) {
             sound.volume = 1
@@ -555,12 +540,14 @@ final class PomodoroTimerModel {
         (8.0, "Hero"),
     ]
 
+    // Runtime state lives outside the host's `widget.<id>.` settings
+    // namespace, matching NetworkMonitor's `<pluginId>.<key>` convention.
     private static func stateStorageKey(_ widgetId: String) -> String {
-        "widget.\(widgetId).timerState"
+        "\(widgetId).timerState"
     }
 
     private static func dayKeyStorageKey(_ widgetId: String) -> String {
-        "widget.\(widgetId).timerDay"
+        "\(widgetId).timerDay"
     }
 
     private static func dayKey(for date: Date) -> String {
