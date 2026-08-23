@@ -1,7 +1,7 @@
 {
     "id": "system-monitor-cpu-memory",
     "name": "CPU & Memory",
-    "author": "Skykey",
+    "author": "skykeyjoker",
     "description": "Live CPU and memory rings with hardware temperature, history, and per-process PID tooltips.",
     "iconSymbol": "gauge.with.dots.needle.67percent",
     "orientations": ["horizontal", "vertical"],

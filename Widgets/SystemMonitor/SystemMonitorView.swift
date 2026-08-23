@@ -248,43 +248,68 @@ struct SystemMonitorView: View {
         detailFontScale: CGFloat,
         labelFontScale: CGFloat
     ) -> some View {
-        HStack(spacing: dim * (isVertical ? 0.04 : metricSpacingScale)) {
-            MetricRingView(
-                title: title,
-                value: value,
-                segments: segments,
-                size: dim * ringScale,
-                symbolName: symbolName,
-                showsTitle: false
-            )
-
-            VStack(alignment: .leading, spacing: max(dim * 0.018, 1)) {
-                Text(detail)
-                    .font(.system(
-                        size: max(dim * (isVertical ? 0.105 : detailFontScale), 8),
-                        weight: .semibold,
-                        design: .rounded
-                    ))
-                    .foregroundStyle(detailColor)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-
-                if !isVertical {
-                    Text(compactDetailLabel(detailLabel))
+        Group {
+            if isVertical {
+                // A vertical slot is only one column wide, so the detail text
+                // sits under the ring instead of beside it.
+                VStack(spacing: max(dim * 0.03, 2)) {
+                    MetricRingView(
+                        title: title,
+                        value: value,
+                        segments: segments,
+                        size: dim * ringScale,
+                        symbolName: symbolName,
+                        showsTitle: false
+                    )
+                    Text(detail)
                         .font(.system(
-                            size: max(dim * labelFontScale, 6),
-                            weight: .medium,
+                            size: max(dim * 0.105, 8),
+                            weight: .semibold,
                             design: .rounded
                         ))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(detailColor)
+                        .monospacedDigit()
                         .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
+                        .minimumScaleFactor(0.7)
                 }
+            } else {
+                HStack(spacing: dim * metricSpacingScale) {
+                    MetricRingView(
+                        title: title,
+                        value: value,
+                        segments: segments,
+                        size: dim * ringScale,
+                        symbolName: symbolName,
+                        showsTitle: false
+                    )
+
+                    VStack(alignment: .leading, spacing: max(dim * 0.018, 1)) {
+                        Text(detail)
+                            .font(.system(
+                                size: max(dim * detailFontScale, 8),
+                                weight: .semibold,
+                                design: .rounded
+                            ))
+                            .foregroundStyle(detailColor)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+
+                        Text(compactDetailLabel(detailLabel))
+                            .font(.system(
+                                size: max(dim * labelFontScale, 6),
+                                weight: .medium,
+                                design: .rounded
+                            ))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .layoutPriority(1)
+                }
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .layoutPriority(1)
         }
-        .fixedSize(horizontal: !isVertical, vertical: false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue("\(value), \(detailLabel) \(detail)")
