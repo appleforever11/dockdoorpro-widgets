@@ -36,10 +36,6 @@ private enum CodexUsagePreferences {
     static var rainbowUsageRing: Bool {
         WidgetDefaults.bool(key: "rainbowUsageRing", widgetId: widgetID, default: true)
     }
-
-    static func setRainbowUsageRing(_ value: Bool) {
-        UserDefaults.standard.set(value, forKey: "widget.\(widgetID).rainbowUsageRing")
-    }
 }
 
 private struct CodexUsageCompactView: View {
@@ -129,11 +125,11 @@ private struct CodexUsageCompactView: View {
     private func usageLabels(alignment: HorizontalAlignment) -> some View {
         VStack(alignment: alignment, spacing: 1) {
             Text(card.title)
-                .font(.system(size: isVertical ? 11 : 13, weight: .bold, design: .rounded))
+                .font(.system(size: max(10, min(dim * 0.24, 13)), weight: .bold, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.70)
             Text(card.subtitle)
-                .font(.system(size: isVertical ? 8.5 : 9.5, weight: .medium, design: .rounded))
+                .font(.system(size: max(8, min(dim * 0.18, 9.5)), weight: .medium, design: .rounded))
                 .foregroundStyle(.primary.opacity(0.78))
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
@@ -159,18 +155,6 @@ private struct CodexUsagePanelView: View {
                 Label("Codex Usage", systemImage: "gauge.with.dots.needle.67percent")
                     .font(.headline)
                 Spacer()
-                Button {
-                    rainbow.toggle()
-                    CodexUsagePreferences.setRainbowUsageRing(rainbow)
-                } label: {
-                    Image(systemName: rainbow ? "paintpalette.fill" : "paintpalette")
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(rainbow ? .pink : .secondary)
-                        .frame(width: 22, height: 22)
-                        .background(.white.opacity(0.08), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .help(rainbow ? "Rainbow usage ring is on" : "Turn on rainbow usage ring")
                 Button(action: dismiss) {
                     Image(systemName: "xmark.circle.fill")
                 }
@@ -211,6 +195,12 @@ private struct CodexUsagePanelView: View {
                 Text("Usage Limits")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+
+                if snapshot.limits.isEmpty {
+                    Text("No local usage data yet - run a Codex session to record limits")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
 
                 ForEach(snapshot.limits) { limit in
                     HStack(spacing: 8) {
@@ -262,13 +252,15 @@ private struct CodexUsagePanelView: View {
 }
 
 private struct UsageRing: View {
-    let percentRemaining: Double
+    let percentRemaining: Double?
     let size: CGFloat
     let lineWidth: CGFloat
     let rainbow: Bool
 
-    private var clamped: Double { min(max(percentRemaining, 0), 1) }
+    private var hasData: Bool { percentRemaining != nil }
+    private var clamped: Double { min(max(percentRemaining ?? 0, 0), 1) }
     private var fallbackColor: Color {
+        guard hasData else { return .gray }
         switch clamped {
         case 0.45...: return Color(red: 0.13, green: 0.72, blue: 1.00)
         case 0.20..<0.45: return .orange
@@ -294,39 +286,43 @@ private struct UsageRing: View {
         ZStack {
             Circle()
                 .stroke(.white.opacity(rainbow ? 0.10 : 0.14), lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: clamped)
-                .stroke(
-                    AngularGradient(colors: colors, center: .center),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-            if rainbow {
+            if hasData {
                 Circle()
                     .trim(from: 0, to: clamped)
                     .stroke(
                         AngularGradient(colors: colors, center: .center),
-                        style: StrokeStyle(lineWidth: lineWidth * 1.55, lineCap: .round)
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .blur(radius: max(2, lineWidth * 0.55))
-                    .opacity(0.55)
+                if rainbow {
+                    Circle()
+                        .trim(from: 0, to: clamped)
+                        .stroke(
+                            AngularGradient(colors: colors, center: .center),
+                            style: StrokeStyle(lineWidth: lineWidth * 1.55, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .blur(radius: max(2, lineWidth * 0.55))
+                        .opacity(0.55)
+                }
             }
             VStack(spacing: -1) {
-                Text("\(Int((clamped * 100).rounded()))")
+                Text(hasData ? "\(Int((clamped * 100).rounded()))" : "--")
                     .font(.system(size: size * 0.34, weight: .black, design: .rounded))
                     .monospacedDigit()
-                Text("%")
-                    .font(.system(size: size * 0.15, weight: .bold, design: .rounded))
-                    .foregroundStyle(.secondary)
+                if hasData {
+                    Text("%")
+                        .font(.system(size: size * 0.15, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
             }
             .minimumScaleFactor(0.65)
         }
         .frame(width: size, height: size)
         .background(.black.opacity(0.16), in: Circle())
-        .shadow(color: (rainbow ? Color.pink : fallbackColor).opacity(rainbow ? 0.48 : 0.30), radius: rainbow ? 8 : 5, y: 1)
+        .shadow(color: hasData ? (rainbow ? Color.pink : fallbackColor).opacity(rainbow ? 0.48 : 0.30) : .clear, radius: rainbow ? 8 : 5, y: 1)
         .accessibilityLabel("Codex usage remaining")
-        .accessibilityValue("\(Int((clamped * 100).rounded())) percent")
+        .accessibilityValue(hasData ? "\(Int((clamped * 100).rounded())) percent" : "No data")
     }
 }
 
@@ -354,24 +350,24 @@ private struct CodexUsageSnapshot {
     let limits: [CodexUsageLimit]
     let creditsBalance: String?
 
-    static let empty = CodexUsageSnapshot(
-        limits: [CodexUsageLimit(name: "General", percentRemaining: 1, resetLabel: "Waiting for data", systemImage: "gauge.with.dots.needle.67percent")],
-        creditsBalance: nil
-    )
+    static let empty = CodexUsageSnapshot(limits: [], creditsBalance: nil)
 
-    var primaryLimit: CodexUsageLimit {
-        limits.first ?? CodexUsageLimit(name: "General", percentRemaining: 1, resetLabel: "Waiting for data", systemImage: "gauge.with.dots.needle.67percent")
+    var primaryLimit: CodexUsageLimit? { limits.first }
+
+    var primaryPercent: Double? { primaryLimit?.percentRemaining }
+    var primaryTitle: String { primaryLimit?.percentLabel ?? "No data" }
+    var primarySubtitle: String {
+        primaryLimit.map { "\($0.name) - \($0.resetLabel)" } ?? "Run a Codex session to record usage"
     }
 
-    var primaryPercent: Double { primaryLimit.percentRemaining }
-    var primaryTitle: String { primaryLimit.percentLabel }
-    var primarySubtitle: String { "\(primaryLimit.name) - \(primaryLimit.resetLabel)" }
-
     func resetSummary(now: Date) -> String {
+        guard let primaryLimit else { return "No local usage data yet" }
         if let resetDate = primaryLimit.resetDate {
             let interval = max(0, resetDate.timeIntervalSince(now))
-            let hours = Int(interval / 3600)
+            let days = Int(interval / 86400)
+            let hours = Int((interval.truncatingRemainder(dividingBy: 86400)) / 3600)
             let minutes = Int((interval.truncatingRemainder(dividingBy: 3600)) / 60)
+            if days > 0 { return "Resets in \(days)d \(hours)h" }
             return hours > 0 ? "Resets in \(hours)h \(minutes)m" : "Resets in \(minutes)m"
         }
         return primaryLimit.resetLabel == "No reset date" ? "No reset date in local snapshot" : "Resets \(primaryLimit.resetLabel)"
@@ -395,7 +391,7 @@ private struct CodexUsageSnapshot {
             ))
         }
         guard !cards.isEmpty else {
-            return CodexUsageCard(title: "Usage", subtitle: "Waiting for data", shortLabel: "Usage", percentRemaining: 1)
+            return CodexUsageCard(title: "No data", subtitle: "No snapshot yet", shortLabel: "Usage", percentRemaining: nil)
         }
         let index = Int(date.timeIntervalSinceReferenceDate / 4) % cards.count
         return cards[index]
@@ -446,10 +442,17 @@ private enum CodexUsageStore {
         .appendingPathComponent(".codex/usage.json")
 
     static func read() async -> CodexUsageSnapshot {
+        // usage.json is an optional override for people maintaining the file
+        // with their own tooling; Codex's own session logs are the default source.
+        if let override = readUsageFile() { return override }
+        return CodexSessionsStore.read() ?? .empty
+    }
+
+    private static func readUsageFile() -> CodexUsageSnapshot? {
         guard let data = try? Data(contentsOf: usageURL),
               let file = try? JSONDecoder().decode(CodexUsageFile.self, from: data)
         else {
-            return .empty
+            return nil
         }
 
         let decodedLimits = (file.limits ?? []).map { record in
@@ -511,6 +514,127 @@ private enum CodexUsageStore {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+}
+
+/// Reads the newest `rate_limits` snapshot Codex records in its own session
+/// rollout logs (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`). Read-only;
+/// data is as fresh as the user's last Codex turn.
+private enum CodexSessionsStore {
+    private static let sessionsURL = URL(fileURLWithPath: NSHomeDirectory())
+        .appendingPathComponent(".codex/sessions")
+
+    static func read() -> CodexUsageSnapshot? {
+        for fileURL in recentRolloutFiles(limit: 8) {
+            if let snapshot = latestSnapshot(in: fileURL) { return snapshot }
+        }
+        return nil
+    }
+
+    // Directory and file names sort chronologically (YYYY/MM/DD, timestamped
+    // filenames), so descending lexical order walks newest-first.
+    private static func recentRolloutFiles(limit: Int) -> [URL] {
+        let fm = FileManager.default
+        func children(_ url: URL) -> [URL] {
+            ((try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? [])
+                .sorted { $0.lastPathComponent > $1.lastPathComponent }
+        }
+        var files: [URL] = []
+        for year in children(sessionsURL) {
+            for month in children(year) {
+                for day in children(month) {
+                    files.append(contentsOf: children(day).filter {
+                        $0.lastPathComponent.hasPrefix("rollout-") && $0.pathExtension == "jsonl"
+                    })
+                    if files.count >= limit { return Array(files.prefix(limit)) }
+                }
+            }
+        }
+        return files
+    }
+
+    private static func latestSnapshot(in fileURL: URL) -> CodexUsageSnapshot? {
+        guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else { return nil }
+        let marker = Data("\"rate_limits\"".utf8)
+        let newline = UInt8(ascii: "\n")
+        var searchRange = data.range(of: marker, options: .backwards)
+        while let markerRange = searchRange {
+            let lineStart = data[..<markerRange.lowerBound].lastIndex(of: newline)
+                .map { data.index(after: $0) } ?? data.startIndex
+            let lineEnd = data[markerRange.lowerBound...].firstIndex(of: newline) ?? data.endIndex
+            if let snapshot = decodeSnapshot(from: data.subdata(in: lineStart..<lineEnd)) {
+                return snapshot
+            }
+            searchRange = data[..<lineStart].range(of: marker, options: .backwards)
+        }
+        return nil
+    }
+
+    private static func decodeSnapshot(from line: Data) -> CodexUsageSnapshot? {
+        guard let decoded = try? JSONDecoder().decode(RolloutLine.self, from: line),
+              let rateLimits = decoded.payload?.rateLimits
+        else { return nil }
+
+        var limits: [CodexUsageLimit] = []
+        if let window = rateLimits.primary, let used = window.usedPercent {
+            limits.append(limit(named: windowName(minutes: window.windowMinutes, fallback: "5h"), usedPercent: used, resetsAt: window.resetsAt))
+        }
+        if let window = rateLimits.secondary, let used = window.usedPercent {
+            limits.append(limit(named: windowName(minutes: window.windowMinutes, fallback: "Weekly"), usedPercent: used, resetsAt: window.resetsAt))
+        }
+        guard !limits.isEmpty else { return nil }
+        return CodexUsageSnapshot(limits: limits, creditsBalance: nil)
+    }
+
+    private static func limit(named name: String, usedPercent: Double, resetsAt: Double?) -> CodexUsageLimit {
+        let resetDate = resetsAt.map { Date(timeIntervalSince1970: $0) }
+        return CodexUsageLimit(
+            name: name,
+            percentRemaining: 1 - usedPercent / 100,
+            resetDate: resetDate,
+            resetLabel: resetDate.map { $0.formatted(.dateTime.month(.abbreviated).day()) } ?? "No reset date",
+            systemImage: "gauge.with.dots.needle.67percent"
+        )
+    }
+
+    private static func windowName(minutes: Double?, fallback: String) -> String {
+        guard let minutes, minutes > 0 else { return fallback }
+        if minutes.truncatingRemainder(dividingBy: 10080) == 0 {
+            let weeks = Int(minutes / 10080)
+            return weeks == 1 ? "Weekly" : "\(weeks)w"
+        }
+        if minutes.truncatingRemainder(dividingBy: 1440) == 0 { return "\(Int(minutes / 1440))d" }
+        if minutes.truncatingRemainder(dividingBy: 60) == 0 { return "\(Int(minutes / 60))h" }
+        return "\(Int(minutes))m"
+    }
+
+    private struct RolloutLine: Decodable {
+        let payload: Payload?
+
+        struct Payload: Decodable {
+            let rateLimits: RateLimits?
+
+            enum CodingKeys: String, CodingKey {
+                case rateLimits = "rate_limits"
+            }
+        }
+    }
+
+    private struct RateLimits: Decodable {
+        let primary: Window?
+        let secondary: Window?
+
+        struct Window: Decodable {
+            let usedPercent: Double?
+            let windowMinutes: Double?
+            let resetsAt: Double?
+
+            enum CodingKeys: String, CodingKey {
+                case usedPercent = "used_percent"
+                case windowMinutes = "window_minutes"
+                case resetsAt = "resets_at"
+            }
+        }
     }
 }
 
