@@ -21,20 +21,13 @@ final class CodexUsagePlugin: WidgetPlugin, DockDoorWidgetProvider {
 
     func settingsSchema() -> [WidgetSetting] {
         [
-            .toggle(
-                key: "rainbowUsageRing",
-                label: "Rainbow Usage Ring",
-                defaultValue: true
+            .picker(
+                key: "modelTheme",
+                label: "Widget Theme",
+                options: CodexTheme.allCases.map(\.rawValue),
+                defaultValue: "Astra"
             ),
         ]
-    }
-}
-
-private enum CodexUsagePreferences {
-    static let widgetID = "codex-usage"
-
-    static var rainbowUsageRing: Bool {
-        WidgetDefaults.bool(key: "rainbowUsageRing", widgetId: widgetID, default: true)
     }
 }
 
@@ -43,7 +36,8 @@ private struct CodexUsageCompactView: View {
     let isVertical: Bool
     @State private var snapshot = CodexUsageSnapshot.empty
     @State private var now = Date()
-    @State private var rainbow = CodexUsagePreferences.rainbowUsageRing
+    @AppStorage(CodexTheme.storageKey) private var themeName = CodexTheme.astra.rawValue
+    private var theme: CodexTheme { CodexTheme(rawValue: themeName) ?? .astra }
 
     private var dim: CGFloat { min(size.width, size.height) }
     private var isExtended: Bool {
@@ -71,7 +65,6 @@ private struct CodexUsageCompactView: View {
         .task {
             while !Task.isCancelled {
                 now = Date()
-                rainbow = CodexUsagePreferences.rainbowUsageRing
                 try? await Task.sleep(for: .seconds(2))
             }
         }
@@ -83,7 +76,7 @@ private struct CodexUsageCompactView: View {
                 percentRemaining: card.percentRemaining ?? snapshot.primaryPercent,
                 size: ringSize,
                 lineWidth: max(3, dim * 0.055),
-                rainbow: rainbow
+                theme: theme
             )
             Text(card.shortLabel)
                 .font(.system(size: max(9, min(dim * 0.21, 12)), weight: .bold, design: .rounded))
@@ -101,7 +94,7 @@ private struct CodexUsageCompactView: View {
                         percentRemaining: card.percentRemaining ?? snapshot.primaryPercent,
                         size: ringSize,
                         lineWidth: max(3, dim * 0.052),
-                        rainbow: rainbow
+                        theme: theme
                     )
                     usageLabels(alignment: .center)
                 }
@@ -111,7 +104,7 @@ private struct CodexUsageCompactView: View {
                         percentRemaining: card.percentRemaining ?? snapshot.primaryPercent,
                         size: ringSize,
                         lineWidth: max(3, dim * 0.052),
-                        rainbow: rainbow
+                        theme: theme
                     )
                     usageLabels(alignment: .leading)
                 }
@@ -139,14 +132,14 @@ private struct CodexUsageCompactView: View {
 
     private func refresh() async {
         snapshot = await CodexUsageStore.read()
-        rainbow = CodexUsagePreferences.rainbowUsageRing
     }
 }
 
 private struct CodexUsagePanelView: View {
     let dismiss: () -> Void
     @State private var snapshot = CodexUsageSnapshot.empty
-    @State private var rainbow = CodexUsagePreferences.rainbowUsageRing
+    @AppStorage(CodexTheme.storageKey) private var themeName = CodexTheme.astra.rawValue
+    private var theme: CodexTheme { CodexTheme(rawValue: themeName) ?? .astra }
     @State private var now = Date()
 
     var body: some View {
@@ -155,6 +148,7 @@ private struct CodexUsagePanelView: View {
                 Label("Codex Usage", systemImage: "gauge.with.dots.needle.67percent")
                     .font(.headline)
                 Spacer()
+                CodexThemeMenu(selection: $themeName)
                 Button(action: dismiss) {
                     Image(systemName: "xmark.circle.fill")
                 }
@@ -167,7 +161,7 @@ private struct CodexUsagePanelView: View {
                     percentRemaining: snapshot.primaryPercent,
                     size: 72,
                     lineWidth: 7,
-                    rainbow: rainbow
+                    theme: theme
                 )
                 VStack(alignment: .leading, spacing: 4) {
                     Text(snapshot.primaryTitle)
@@ -183,7 +177,8 @@ private struct CodexUsagePanelView: View {
                 Spacer(minLength: 0)
             }
             .padding(10)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(theme.accent.opacity(0.075), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.accent.opacity(0.18)))
 
             HStack(spacing: 10) {
                 UsageStat(title: "Limits", value: "\(snapshot.limits.count)")
@@ -236,6 +231,10 @@ private struct CodexUsagePanelView: View {
         }
         .padding(14)
         .frame(width: 350)
+        .background(CodexThemeBackground(theme: theme))
+        .environment(\.colorScheme, .dark)
+        .tint(theme.accent)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
         .task {
             await refresh()
             while !Task.isCancelled {
@@ -254,7 +253,6 @@ private struct CodexUsagePanelView: View {
 
     private func refresh() async {
         snapshot = await CodexUsageStore.read()
-        rainbow = CodexUsagePreferences.rainbowUsageRing
     }
 }
 
@@ -262,37 +260,16 @@ private struct UsageRing: View {
     let percentRemaining: Double?
     let size: CGFloat
     let lineWidth: CGFloat
-    let rainbow: Bool
+    let theme: CodexTheme
 
-    private var hasData: Bool { percentRemaining != nil }
-    private var clamped: Double { min(max(percentRemaining ?? 0, 0), 1) }
-    private var fallbackColor: Color {
-        guard hasData else { return .gray }
-        switch clamped {
-        case 0.45...: return Color(red: 0.13, green: 0.72, blue: 1.00)
-        case 0.20..<0.45: return .orange
-        default: return .red
-        }
-    }
-    private var colors: [Color] {
-        rainbow
-            ? [
-                Color(red: 1.00, green: 0.18, blue: 0.34),
-                Color(red: 1.00, green: 0.55, blue: 0.16),
-                Color(red: 1.00, green: 0.90, blue: 0.18),
-                Color(red: 0.18, green: 0.86, blue: 0.36),
-                Color(red: 0.12, green: 0.70, blue: 1.00),
-                Color(red: 0.48, green: 0.34, blue: 1.00),
-                Color(red: 0.95, green: 0.28, blue: 0.86),
-                Color(red: 1.00, green: 0.18, blue: 0.34),
-            ]
-            : [fallbackColor.opacity(0.72), fallbackColor, .cyan.opacity(0.85)]
-    }
+    private var hasData: Bool { percentRemaining?.isFinite == true }
+    private var clamped: Double { hasData ? min(max(percentRemaining ?? 0, 0), 1) : 0 }
+    private var colors: [Color] { theme.colors }
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(.white.opacity(rainbow ? 0.10 : 0.14), lineWidth: lineWidth)
+                .stroke(theme.accent.opacity(0.14), lineWidth: lineWidth)
             if hasData {
                 Circle()
                     .trim(from: 0, to: clamped)
@@ -301,7 +278,7 @@ private struct UsageRing: View {
                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                if rainbow {
+                if clamped > 0 {
                     Circle()
                         .trim(from: 0, to: clamped)
                         .stroke(
@@ -327,7 +304,12 @@ private struct UsageRing: View {
         }
         .frame(width: size, height: size)
         .background(.black.opacity(0.16), in: Circle())
-        .shadow(color: hasData ? (rainbow ? Color.pink : fallbackColor).opacity(rainbow ? 0.48 : 0.30) : .clear, radius: rainbow ? 8 : 5, y: 1)
+        .overlay {
+            if theme == .astra && clamped > 0 {
+                AstraRingSparkles(progress: clamped, ringSize: size, lineWidth: lineWidth)
+            }
+        }
+        .shadow(color: hasData ? theme.accent.opacity(0.42) : .clear, radius: 7, y: 1)
         .accessibilityLabel("Codex usage remaining")
         .accessibilityValue(hasData ? "\(Int((clamped * 100).rounded())) percent" : "No data")
     }
