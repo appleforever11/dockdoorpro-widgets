@@ -216,10 +216,17 @@ private struct CodexUsagePanelView: View {
                                 .font(.caption.monospacedDigit().weight(.bold))
                             Text(limit.resetLabel)
                                 .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(limit.isAstra ? Color.white.opacity(0.75) : Color.secondary)
                         }
                     }
                     .lineLimit(1)
+                    .foregroundStyle(limit.isAstra ? Color.white : Color.primary)
+                    .padding(limit.isAstra ? 8 : 0)
+                    .background {
+                        if limit.isAstra {
+                            AstraUsageBackground(isSelected: true, isHovering: false)
+                        }
+                    }
                 }
             }
 
@@ -423,14 +430,16 @@ private struct CodexUsageLimit: Identifiable {
     }
 
     var percentLabel: String { "\(Int((percentRemaining * 100).rounded()))% left" }
+    var isAstra: Bool { name.localizedCaseInsensitiveContains("astra") }
     var shortName: String {
+        if isAstra { return "Astra" }
         if name.localizedCaseInsensitiveContains("spark") { return "Spark" }
         if name.localizedCaseInsensitiveContains("general") { return "General" }
         return name.count > 10 ? String(name.prefix(10)) : name
     }
     var tint: Color {
         switch percentRemaining {
-        case 0.45...: return Color(red: 0.13, green: 0.72, blue: 1.00)
+        case 0.45...: return isAstra ? Color(red: 0.78, green: 0.57, blue: 1.00) : Color(red: 0.13, green: 0.72, blue: 1.00)
         case 0.20..<0.45: return .orange
         default: return .red
         }
@@ -506,7 +515,8 @@ private enum CodexUsageStore {
     }
 
     private static func defaultSymbol(for name: String) -> String {
-        name.localizedCaseInsensitiveContains("spark") ? "sparkles" : "gauge.with.dots.needle.67percent"
+        (name.localizedCaseInsensitiveContains("spark") || name.localizedCaseInsensitiveContains("astra"))
+            ? "sparkles" : "gauge.with.dots.needle.67percent"
     }
 
     private static func parseDate(_ value: String?) -> Date? {
@@ -576,11 +586,14 @@ private enum CodexSessionsStore {
         else { return nil }
 
         var limits: [CodexUsageLimit] = []
+        let isAstra = [rateLimits.limitName, rateLimits.limitID].compactMap { $0 }
+            .contains { $0.localizedCaseInsensitiveContains("astra") }
+        let prefix = isAstra ? "Astra " : ""
         if let window = rateLimits.primary, let used = window.usedPercent {
-            limits.append(limit(named: windowName(minutes: window.windowMinutes, fallback: "5h"), usedPercent: used, resetsAt: window.resetsAt))
+            limits.append(limit(named: prefix + windowName(minutes: window.windowMinutes, fallback: "5h"), usedPercent: used, resetsAt: window.resetsAt))
         }
         if let window = rateLimits.secondary, let used = window.usedPercent {
-            limits.append(limit(named: windowName(minutes: window.windowMinutes, fallback: "Weekly"), usedPercent: used, resetsAt: window.resetsAt))
+            limits.append(limit(named: prefix + windowName(minutes: window.windowMinutes, fallback: "Weekly"), usedPercent: used, resetsAt: window.resetsAt))
         }
         guard !limits.isEmpty else { return nil }
         return CodexUsageSnapshot(limits: limits, creditsBalance: nil)
@@ -593,7 +606,7 @@ private enum CodexSessionsStore {
             percentRemaining: 1 - usedPercent / 100,
             resetDate: resetDate,
             resetLabel: resetDate.map { $0.formatted(.dateTime.month(.abbreviated).day()) } ?? "No reset date",
-            systemImage: "gauge.with.dots.needle.67percent"
+            systemImage: name.localizedCaseInsensitiveContains("astra") ? "sparkles" : "gauge.with.dots.needle.67percent"
         )
     }
 
@@ -623,6 +636,14 @@ private enum CodexSessionsStore {
     private struct RateLimits: Decodable {
         let primary: Window?
         let secondary: Window?
+        let limitName: String?
+        let limitID: String?
+
+        enum CodingKeys: String, CodingKey {
+            case primary, secondary
+            case limitName = "limit_name"
+            case limitID = "limit_id"
+        }
 
         struct Window: Decodable {
             let usedPercent: Double?
