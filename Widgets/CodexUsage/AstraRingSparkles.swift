@@ -14,6 +14,17 @@ struct AstraRingSparkles: View {
                                 paused: reduceMotion || forceReducedMotion || !isVisible)) { timeline in
             Canvas { context, size in
                 let time = reduceMotion || forceReducedMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                drawStars(context: &context, size: size, time: time)
+            }
+        }
+        .frame(width: ringSize + lineWidth * 3, height: ringSize + lineWidth * 3)
+        .onAppear { isVisible = true }
+        .onDisappear { isVisible = false }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func drawStars(context: inout GraphicsContext, size: CGSize, time: Double) {
                 let count = ringSize < 45 ? 5 : 12
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
                 let radius = ringSize / 2
@@ -22,10 +33,10 @@ struct AstraRingSparkles: View {
                     let pulse = (sin(time * (1.3 + Double(index % 3) * 0.25) + seed) + 1) / 2
                     let position = (Double(index) + 0.5 + 0.18 * sin(time * 0.35 + seed)) / Double(count)
                     let angle = position * progress * .pi * 2 - .pi / 2
-                    let orbit = radius + sin(seed) * lineWidth * 0.22
-                    let point = CGPoint(x: center.x + cos(angle) * orbit,
-                                        y: center.y + sin(angle) * orbit)
-                    let arm = max(1.1, lineWidth * 0.38) * (0.65 + pulse * 0.65)
+                    let orbit: CGFloat = radius + CGFloat(sin(seed)) * lineWidth * 0.22
+                    let point = CGPoint(x: center.x + CGFloat(cos(angle)) * orbit,
+                                        y: center.y + CGFloat(sin(angle)) * orbit)
+                    let arm: CGFloat = max(1.1, lineWidth * 0.38) * CGFloat(0.65 + pulse * 0.65)
                     var halo = context
                     halo.addFilter(.blur(radius: max(1.4, lineWidth * 0.5)))
                     halo.fill(Path(ellipseIn: CGRect(x: point.x - arm * 2, y: point.y - arm * 2,
@@ -44,12 +55,5 @@ struct AstraRingSparkles: View {
                     star.closeSubpath()
                     context.fill(star, with: .color(.white.opacity(0.35 + pulse * 0.65)))
                 }
-            }
-        }
-        .frame(width: ringSize + lineWidth * 3, height: ringSize + lineWidth * 3)
-        .onAppear { isVisible = true }
-        .onDisappear { isVisible = false }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }
