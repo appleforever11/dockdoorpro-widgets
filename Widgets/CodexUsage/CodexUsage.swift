@@ -275,31 +275,38 @@ private struct UsageRing: View {
         return [warningColor.opacity(0.72), warningColor, warningColor.opacity(0.92)]
     }
     private var glowColor: Color { warningColor ?? theme.accent }
+    private var glowBlur: CGFloat { max(2, lineWidth * 0.55) }
+    // The host clips widget content to the dock card, so the blurred glow and
+    // the drop shadow have to stay inside the frame it hands us.
+    private var glowInset: CGFloat { lineWidth * 0.28 + glowBlur * 0.6 }
 
     var body: some View {
         ZStack {
-            Circle()
-                .stroke(theme.accent.opacity(0.14), lineWidth: lineWidth)
-            if hasData {
+            ZStack {
                 Circle()
-                    .trim(from: 0, to: clamped)
-                    .stroke(
-                        AngularGradient(colors: colors, center: .center),
-                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                if clamped > 0 {
+                    .stroke(theme.accent.opacity(0.14), lineWidth: lineWidth)
+                if hasData {
                     Circle()
                         .trim(from: 0, to: clamped)
                         .stroke(
                             AngularGradient(colors: colors, center: .center),
-                            style: StrokeStyle(lineWidth: lineWidth * 1.55, lineCap: .round)
+                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
-                        .blur(radius: max(2, lineWidth * 0.55))
-                        .opacity(0.55)
+                    if clamped > 0 {
+                        Circle()
+                            .trim(from: 0, to: clamped)
+                            .stroke(
+                                AngularGradient(colors: colors, center: .center),
+                                style: StrokeStyle(lineWidth: lineWidth * 1.55, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                            .blur(radius: glowBlur)
+                            .opacity(0.55)
+                    }
                 }
             }
+            .padding(glowInset)
             VStack(spacing: -1) {
                 Text(hasData ? "\(Int((clamped * 100).rounded()))" : "--")
                     .font(.system(size: size * 0.34, weight: .black, design: .rounded))
@@ -314,10 +321,10 @@ private struct UsageRing: View {
         }
         .frame(width: size, height: size)
         .background(isDark ? Color.black.opacity(0.16) : Color.white.opacity(0.55), in: Circle())
-        .shadow(color: hasData ? glowColor.opacity(0.42) : .clear, radius: 7, y: 1)
+        .shadow(color: hasData ? glowColor.opacity(0.42) : .clear, radius: max(2, size * 0.09), y: 1)
         .overlay {
             if theme == .astra && clamped > 0 {
-                AstraRingSparkles(progress: clamped, ringSize: size, lineWidth: lineWidth)
+                AstraRingSparkles(progress: clamped, ringSize: size - glowInset * 2, lineWidth: lineWidth, canvasSize: size)
             }
         }
         .accessibilityLabel("Codex usage remaining")

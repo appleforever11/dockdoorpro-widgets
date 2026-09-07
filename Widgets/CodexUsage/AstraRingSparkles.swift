@@ -5,6 +5,9 @@ struct AstraRingSparkles: View {
     let progress: Double
     let ringSize: CGFloat
     let lineWidth: CGFloat
+    /// Frame to draw in: the ring's full frame, so the overlay never spills
+    /// past what the host will clip. `ringSize` stays the orbit diameter.
+    let canvasSize: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @State private var isVisible = false
@@ -30,7 +33,7 @@ struct AstraRingSparkles: View {
         // Matches RippleRings in the host: composite the animated canvas into a
         // single Metal-backed texture instead of recompositing it per frame.
         .drawingGroup()
-        .frame(width: ringSize + lineWidth * 3, height: ringSize + lineWidth * 3)
+        .frame(width: canvasSize, height: canvasSize)
         .onAppear { isVisible = true }
         .onDisappear { isVisible = false }
         .allowsHitTesting(false)
