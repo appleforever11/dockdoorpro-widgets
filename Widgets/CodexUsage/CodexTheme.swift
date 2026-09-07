@@ -1,19 +1,21 @@
+import DockDoorWidgetSDK
 import SwiftUI
 
-// Shared by the panel and dock: AppStorage propagates palette changes immediately.
-enum CodexTheme: String, CaseIterable, Identifiable {
+/// Palette for the usage ring and panel. The host owns the value: it is
+/// declared as a `.picker` setting and read back through `WidgetDefaults`.
+enum CodexTheme: String, CaseIterable {
     case astra = "Astra", luna = "Luna", sol = "Sol", terra = "Terra", rainbow = "Rainbow"
-    static let storageKey = "widget.codex-usage.modelTheme"
-    var id: String { rawValue }
-    var symbol: String {
-        switch self {
-        case .astra: return "sparkles"
-        case .luna: return "moon.fill"
-        case .sol: return "sun.max.fill"
-        case .terra: return "globe.americas.fill"
-        case .rainbow: return "rainbow"
-        }
+
+    static func current(widgetId: String) -> CodexTheme {
+        CodexTheme(
+            rawValue: WidgetDefaults.string(
+                key: "modelTheme",
+                widgetId: widgetId,
+                default: CodexTheme.astra.rawValue
+            )
+        ) ?? .astra
     }
+
     var accent: Color { colors[1] }
     var colors: [Color] {
         switch self {
@@ -35,52 +37,26 @@ enum CodexTheme: String, CaseIterable, Identifiable {
     }
 }
 
-private struct CodexThemeKey: EnvironmentKey {
-    static let defaultValue = CodexTheme.astra
-}
-extension EnvironmentValues {
-    var codexTheme: CodexTheme {
-        get { self[CodexThemeKey.self] }
-        set { self[CodexThemeKey.self] = newValue }
-    }
-}
-
-struct CodexThemeMenu: View {
-    @Binding var selection: String
-    private var theme: CodexTheme { CodexTheme(rawValue: selection) ?? .astra }
-    var body: some View {
-        Menu {
-            Picker("Widget theme", selection: $selection) {
-                ForEach(CodexTheme.allCases) { theme in
-                    Label(theme.rawValue, systemImage: theme.symbol).tag(theme.rawValue)
-                }
-            }
-            Text("Changes appearance only")
-        } label: {
-            Image(systemName: "paintpalette.fill")
-                .foregroundStyle(theme.accent)
-                .frame(width: 24, height: 24)
-                .background(theme.accent.opacity(0.12), in: Circle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Choose widget theme • \(theme.rawValue)")
-        .accessibilityLabel("Widget theme")
-        .accessibilityValue(theme.rawValue)
-    }
-}
-
 struct CodexThemeBackground: View {
     let theme: CodexTheme
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private var isDark: Bool { colorScheme == .dark }
+
     var body: some View {
         ZStack {
-            theme.base.opacity(reduceTransparency ? 1 : 0.94)
-            RadialGradient(colors: [theme.accent.opacity(0.20), .clear], center: .topTrailing,
+            // Light appearance keeps the host's own panel chrome and only
+            // takes a tint, so semantic text colors stay readable.
+            if isDark {
+                theme.base.opacity(reduceTransparency ? 1 : 0.94)
+            } else {
+                theme.accent.opacity(reduceTransparency ? 0.16 : 0.10)
+            }
+            RadialGradient(colors: [theme.accent.opacity(isDark ? 0.20 : 0.12), .clear], center: .topTrailing,
                            startRadius: 10, endRadius: 360)
-            // Static points keep the main surface quiet; only model buttons animate.
-            if theme == .astra {
+            // Static points keep the main surface quiet; only the ring animates.
+            if theme == .astra && isDark {
                 Canvas { context, size in
                     for index in 0..<32 {
                         let x = CGFloat((index * 73 + 13) % 347) / 347 * size.width

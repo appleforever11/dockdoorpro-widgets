@@ -2,11 +2,13 @@ import DockDoorWidgetSDK
 import Foundation
 import SwiftUI
 
+let codexUsageWidgetId = "codex-usage"
+
 final class CodexUsagePlugin: WidgetPlugin, DockDoorWidgetProvider {
-    var id: String { "codex-usage" }
+    var id: String { codexUsageWidgetId }
     var name: String { "Codex Usage" }
     var iconSymbol: String { "gauge.with.dots.needle.67percent" }
-    var widgetDescription: String { "Read-only Codex usage limits, credits, and reset countdowns" }
+    var widgetDescription: String { "Read-only Codex usage with model-colored themes and an animated Astra ring" }
     var supportedOrientations: [WidgetOrientation] { [.horizontal, .vertical] }
 
     @MainActor
@@ -36,8 +38,7 @@ private struct CodexUsageCompactView: View {
     let isVertical: Bool
     @State private var snapshot = CodexUsageSnapshot.empty
     @State private var now = Date()
-    @AppStorage(CodexTheme.storageKey) private var themeName = CodexTheme.astra.rawValue
-    private var theme: CodexTheme { CodexTheme(rawValue: themeName) ?? .astra }
+    private var theme: CodexTheme { CodexTheme.current(widgetId: codexUsageWidgetId) }
 
     private var dim: CGFloat { min(size.width, size.height) }
     private var isExtended: Bool {
@@ -138,8 +139,7 @@ private struct CodexUsageCompactView: View {
 private struct CodexUsagePanelView: View {
     let dismiss: () -> Void
     @State private var snapshot = CodexUsageSnapshot.empty
-    @AppStorage(CodexTheme.storageKey) private var themeName = CodexTheme.astra.rawValue
-    private var theme: CodexTheme { CodexTheme(rawValue: themeName) ?? .astra }
+    private var theme: CodexTheme { CodexTheme.current(widgetId: codexUsageWidgetId) }
     @State private var now = Date()
 
     var body: some View {
@@ -148,7 +148,6 @@ private struct CodexUsagePanelView: View {
                 Label("Codex Usage", systemImage: "gauge.with.dots.needle.67percent")
                     .font(.headline)
                 Spacer()
-                CodexThemeMenu(selection: $themeName)
                 Button(action: dismiss) {
                     Image(systemName: "xmark.circle.fill")
                 }
@@ -211,17 +210,13 @@ private struct CodexUsagePanelView: View {
                                 .font(.caption.monospacedDigit().weight(.bold))
                             Text(limit.resetLabel)
                                 .font(.caption2)
-                                .foregroundStyle(limit.isAstra ? Color.white.opacity(0.75) : Color.secondary)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     .lineLimit(1)
-                    .foregroundStyle(limit.isAstra ? Color.white : Color.primary)
-                    .padding(limit.isAstra ? 8 : 0)
-                    .background {
-                        if limit.isAstra {
-                            AstraUsageBackground(isSelected: true, isHovering: false)
-                        }
-                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
             }
 
@@ -232,7 +227,6 @@ private struct CodexUsagePanelView: View {
         .padding(14)
         .frame(width: 350)
         .background(CodexThemeBackground(theme: theme))
-        .environment(\.colorScheme, .dark)
         .tint(theme.accent)
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .task {
@@ -264,7 +258,21 @@ private struct UsageRing: View {
 
     private var hasData: Bool { percentRemaining?.isFinite == true }
     private var clamped: Double { hasData ? min(max(percentRemaining ?? 0, 0), 1) : 0 }
-    private var colors: [Color] { theme.colors }
+    /// The theme owns the healthy palette; a low budget still overrides it,
+    /// since in the dock the ring is the only thing the user can read.
+    private var warningColor: Color? {
+        guard hasData else { return nil }
+        switch clamped {
+        case 0.45...: return nil
+        case 0.20 ..< 0.45: return .orange
+        default: return .red
+        }
+    }
+    private var colors: [Color] {
+        guard let warningColor else { return theme.colors }
+        return [warningColor.opacity(0.72), warningColor, warningColor.opacity(0.92)]
+    }
+    private var glowColor: Color { warningColor ?? theme.accent }
 
     var body: some View {
         ZStack {
@@ -304,12 +312,12 @@ private struct UsageRing: View {
         }
         .frame(width: size, height: size)
         .background(.black.opacity(0.16), in: Circle())
+        .shadow(color: hasData ? glowColor.opacity(0.42) : .clear, radius: 7, y: 1)
         .overlay {
             if theme == .astra && clamped > 0 {
                 AstraRingSparkles(progress: clamped, ringSize: size, lineWidth: lineWidth)
             }
         }
-        .shadow(color: hasData ? theme.accent.opacity(0.42) : .clear, radius: 7, y: 1)
         .accessibilityLabel("Codex usage remaining")
         .accessibilityValue(hasData ? "\(Int((clamped * 100).rounded())) percent" : "No data")
     }
@@ -412,16 +420,21 @@ private struct CodexUsageLimit: Identifiable {
     }
 
     var percentLabel: String { "\(Int((percentRemaining * 100).rounded()))% left" }
-    var isAstra: Bool { name.localizedCaseInsensitiveContains("astra") }
+    /// Model-prefixed names ("Astra 5h", "Astra Weekly") must keep their window
+    /// suffix, otherwise the dock cycler shows two cards labelled the same.
     var shortName: String {
-        if isAstra { return "Astra" }
-        if name.localizedCaseInsensitiveContains("spark") { return "Spark" }
-        if name.localizedCaseInsensitiveContains("general") { return "General" }
-        return name.count > 10 ? String(name.prefix(10)) : name
+        var window = name
+        if let astra = name.range(of: "astra ", options: [.caseInsensitive, .anchored]) {
+            window = String(name[astra.upperBound...]).trimmingCharacters(in: .whitespaces)
+        }
+        if window.isEmpty { return "Astra" }
+        if window.localizedCaseInsensitiveContains("spark") { return "Spark" }
+        if window.localizedCaseInsensitiveContains("general") { return "General" }
+        return window.count > 10 ? String(window.prefix(10)) : window
     }
     var tint: Color {
         switch percentRemaining {
-        case 0.45...: return isAstra ? Color(red: 0.78, green: 0.57, blue: 1.00) : Color(red: 0.13, green: 0.72, blue: 1.00)
+        case 0.45...: return Color(red: 0.13, green: 0.72, blue: 1.00)
         case 0.20..<0.45: return .orange
         default: return .red
         }
