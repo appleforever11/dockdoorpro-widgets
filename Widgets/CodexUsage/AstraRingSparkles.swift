@@ -27,6 +27,9 @@ struct AstraRingSparkles: View {
                 drawStars(context: &context, size: size, time: time, color: starColor)
             }
         }
+        // Matches RippleRings in the host: composite the animated canvas into a
+        // single Metal-backed texture instead of recompositing it per frame.
+        .drawingGroup()
         .frame(width: ringSize + lineWidth * 3, height: ringSize + lineWidth * 3)
         .onAppear { isVisible = true }
         .onDisappear { isVisible = false }
