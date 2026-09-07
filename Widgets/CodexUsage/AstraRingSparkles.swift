@@ -6,7 +6,13 @@ struct AstraRingSparkles: View {
     let ringSize: CGFloat
     let lineWidth: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isVisible = false
+
+    // White stars vanish against a light panel; take the palette instead.
+    private var starColor: Color {
+        colorScheme == .dark ? .white : Color(red: 0.45, green: 0.16, blue: 0.80)
+    }
 
     // The dock ring is on screen for as long as the dock is, so it runs at a
     // lower rate and skips the blurred halos, which are the expensive part.
@@ -18,7 +24,7 @@ struct AstraRingSparkles: View {
                                 paused: reduceMotion || !isVisible)) { timeline in
             Canvas { context, size in
                 let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                drawStars(context: &context, size: size, time: time)
+                drawStars(context: &context, size: size, time: time, color: starColor)
             }
         }
         .frame(width: ringSize + lineWidth * 3, height: ringSize + lineWidth * 3)
@@ -28,7 +34,7 @@ struct AstraRingSparkles: View {
         .accessibilityHidden(true)
     }
 
-    private func drawStars(context: inout GraphicsContext, size: CGSize, time: Double) {
+    private func drawStars(context: inout GraphicsContext, size: CGSize, time: Double, color: Color) {
         let count = isCompact ? 5 : 12
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let radius = ringSize / 2
@@ -59,7 +65,7 @@ struct AstraRingSparkles: View {
             star.addLine(to: CGPoint(x: point.x - arm, y: point.y))
             star.addLine(to: CGPoint(x: point.x - inner, y: point.y - inner))
             star.closeSubpath()
-            context.fill(star, with: .color(.white.opacity(0.35 + pulse * 0.65)))
+            context.fill(star, with: .color(color.opacity(0.35 + pulse * 0.65)))
         }
     }
 }

@@ -255,7 +255,9 @@ private struct UsageRing: View {
     let size: CGFloat
     let lineWidth: CGFloat
     let theme: CodexTheme
+    @Environment(\.colorScheme) private var colorScheme
 
+    private var isDark: Bool { colorScheme == .dark }
     private var hasData: Bool { percentRemaining?.isFinite == true }
     private var clamped: Double { hasData ? min(max(percentRemaining ?? 0, 0), 1) : 0 }
     /// The theme owns the healthy palette; a low budget still overrides it,
@@ -311,7 +313,7 @@ private struct UsageRing: View {
             .minimumScaleFactor(0.65)
         }
         .frame(width: size, height: size)
-        .background(.black.opacity(0.16), in: Circle())
+        .background(isDark ? Color.black.opacity(0.16) : Color.white.opacity(0.55), in: Circle())
         .shadow(color: hasData ? glowColor.opacity(0.42) : .clear, radius: 7, y: 1)
         .overlay {
             if theme == .astra && clamped > 0 {
