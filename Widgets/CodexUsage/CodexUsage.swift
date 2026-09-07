@@ -8,7 +8,7 @@ final class CodexUsagePlugin: WidgetPlugin, DockDoorWidgetProvider {
     var id: String { codexUsageWidgetId }
     var name: String { "Codex Usage" }
     var iconSymbol: String { "gauge.with.dots.needle.67percent" }
-    var widgetDescription: String { "Read-only Codex usage with model-colored themes and an animated Astra ring" }
+    var widgetDescription: String { "Read-only Codex usage with model-colored themes and an optional animated Astra ring" }
     var supportedOrientations: [WidgetOrientation] { [.horizontal, .vertical] }
 
     @MainActor
@@ -27,7 +27,7 @@ final class CodexUsagePlugin: WidgetPlugin, DockDoorWidgetProvider {
                 key: "modelTheme",
                 label: "Widget Theme",
                 options: CodexTheme.allCases.map(\.rawValue),
-                defaultValue: "Astra"
+                defaultValue: "Luna"
             ),
         ]
     }

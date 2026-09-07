@@ -11,9 +11,9 @@ enum CodexTheme: String, CaseIterable {
             rawValue: WidgetDefaults.string(
                 key: "modelTheme",
                 widgetId: widgetId,
-                default: CodexTheme.astra.rawValue
+                default: CodexTheme.luna.rawValue
             )
-        ) ?? .astra
+        ) ?? .luna
     }
 
     var accent: Color { colors[1] }
