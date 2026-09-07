@@ -45,7 +45,10 @@ private struct CodexUsageCompactView: View {
         isVertical ? size.height > size.width * 1.5 : size.width > size.height * 1.5
     }
     private var card: CodexUsageCard { snapshot.card(at: now) }
-    private var ringSize: CGFloat { min(max(dim * 0.70, 24), 38) }
+    // The host clips content to the dock card, so leave a margin rather than
+    // running the ring and its glow into the slot edge.
+    private var contentInset: CGFloat { max(2, dim * 0.05) }
+    private var ringSize: CGFloat { min(max(dim * 0.60, 20), 34) }
 
     var body: some View {
         Group {
@@ -55,6 +58,7 @@ private struct CodexUsageCompactView: View {
                 compactLayout
             }
         }
+        .padding(contentInset)
         .task {
             await refresh()
             while !Task.isCancelled {
