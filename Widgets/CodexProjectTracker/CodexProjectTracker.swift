@@ -170,8 +170,11 @@ private enum CodexAppIconProvider {
 }
 
 private struct CodexTrackerPanelView: View {
+    private let sessionViewportHeight: CGFloat = 184
+
     let dismiss: () -> Void
     @State private var snapshot = CodexSnapshot.empty
+    @StateObject private var titleCache = CodexTitleCache()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -200,27 +203,27 @@ private struct CodexTrackerPanelView: View {
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(snapshot.panelSessions) { session in
-                            CodexSessionRow(session: session)
-                        }
-
-                        if let latest = snapshot.latestChat {
-                            Divider()
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Latest Chat")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(latest)
-                                    .font(.caption)
-                                    .lineLimit(2)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            CodexSessionRow(session: session, titleCache: titleCache)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.trailing, 2)
                 }
-                .frame(height: 184)
+                .frame(maxHeight: sessionViewportHeight)
                 .accessibilityLabel("Recent Codex sessions")
+            }
+
+            if let latest = snapshot.latestChat {
+                Divider()
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Latest Chat")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(latest)
+                        .font(.caption)
+                        .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(14)
@@ -233,11 +236,11 @@ private struct CodexTrackerPanelView: View {
 
 private struct CodexSessionRow: View {
     let session: CodexSession
+    @ObservedObject var titleCache: CodexTitleCache
     @State private var isHovering = false
-    @State private var resolvedTitle: String?
 
     private var rowSubtitle: String {
-        resolvedTitle ?? session.title ?? session.relativeActivity
+        session.title ?? titleCache.title(for: session.id) ?? session.relativeActivity
     }
 
     var body: some View {
@@ -275,15 +278,51 @@ private struct CodexSessionRow: View {
         .help("Open in Codex")
         .task(id: session.id) {
             guard session.title == nil else { return }
-
-            let url = session.url
-            let title = await Task.detached(priority: .utility) {
-                CodexTrackerStore.sessionTitle(from: url)
-            }.value
-
-            guard !Task.isCancelled else { return }
-            resolvedTitle = title
+            titleCache.resolve(id: session.id, url: session.url)
         }
+    }
+}
+
+// Rows live in a LazyVStack, so their state is discarded whenever they scroll
+// out of view. Titles are cached here instead, and reads are queued so a fast
+// flick through the history cannot spawn hundreds of concurrent transcript
+// reads. Work already in flight is never cancelled: the result is cheap to
+// keep and saves the read the next time the row appears.
+@MainActor
+private final class CodexTitleCache: ObservableObject {
+    private static let maxConcurrentReads = 2
+
+    @Published private var titles: [String: String?] = [:]
+    private var queue: [(id: String, url: URL)] = []
+    private var activeReads = 0
+
+    func title(for id: String) -> String? {
+        titles[id] ?? nil
+    }
+
+    func resolve(id: String, url: URL) {
+        guard titles[id] == nil, !queue.contains(where: { $0.id == id }) else { return }
+        queue.append((id: id, url: url))
+        startReadsIfPossible()
+    }
+
+    private func startReadsIfPossible() {
+        while activeReads < Self.maxConcurrentReads, !queue.isEmpty {
+            let next = queue.removeFirst()
+            activeReads += 1
+            Task { [weak self] in
+                let title = await Task.detached(priority: .utility) {
+                    CodexTrackerStore.sessionTitle(from: next.url)
+                }.value
+                self?.finishRead(id: next.id, title: title)
+            }
+        }
+    }
+
+    private func finishRead(id: String, title: String?) {
+        activeReads -= 1
+        titles[id] = .some(title)
+        startReadsIfPossible()
     }
 }
 
@@ -408,7 +447,7 @@ private enum CodexTrackerStore {
         let sessions = Array(panelSessions.prefix(recentLimit()))
         let projects = recentProjects(from: records)
         let latestChat = latestHistoryPrompt()
-        let activeCount = sessions.filter(\.isActive).count
+        let activeCount = panelSessions.filter(\.isActive).count
         let headline = sessions.first?.projectName ?? projects.first?.name ?? "No sessions"
 
         return CodexSnapshot(
