@@ -8,7 +8,7 @@ final class CodexUsagePlugin: WidgetPlugin, DockDoorWidgetProvider {
     var id: String { codexUsageWidgetId }
     var name: String { "Codex Usage" }
     var iconSymbol: String { "gauge.with.dots.needle.67percent" }
-    var widgetDescription: String { "Read-only Codex usage with model-colored themes and an optional animated Astra ring" }
+    var widgetDescription: String { "Read-only Codex usage with current model and reasoning, model-colored themes, and an optional animated Astra ring" }
     var supportedOrientations: [WidgetOrientation] { [.horizontal, .vertical] }
 
     @MainActor
@@ -176,6 +176,10 @@ private struct CodexUsagePanelView: View {
                     Text(snapshot.resetSummary(now: now))
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.tertiary)
+                    Text(snapshot.modelSummary)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(theme.accent)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 0)
             }
@@ -359,12 +363,20 @@ private struct UsageStat: View {
 private struct CodexUsageSnapshot {
     let limits: [CodexUsageLimit]
     let creditsBalance: String?
+    let modelContext: CodexModelContext?
+
+    init(limits: [CodexUsageLimit], creditsBalance: String?, modelContext: CodexModelContext? = nil) {
+        self.limits = limits
+        self.creditsBalance = creditsBalance
+        self.modelContext = modelContext
+    }
 
     static let empty = CodexUsageSnapshot(limits: [], creditsBalance: nil)
 
     var primaryLimit: CodexUsageLimit? { limits.first }
 
     var primaryPercent: Double? { primaryLimit?.percentRemaining }
+    var modelSummary: String { modelContext?.summary ?? "Model unavailable" }
     var primaryTitle: String { primaryLimit?.percentLabel ?? "No data" }
     var primarySubtitle: String {
         primaryLimit.map { "\($0.name) - \($0.resetLabel)" } ?? "Run a Codex session to record usage"
@@ -392,6 +404,14 @@ private struct CodexUsageSnapshot {
                 percentRemaining: limit.percentRemaining
             )
         }
+        if let modelContext {
+            cards.append(CodexUsageCard(
+                title: modelContext.modelLabel,
+                subtitle: "\(modelContext.reasoningLabel) · Current session",
+                shortLabel: modelContext.shortModelLabel,
+                percentRemaining: nil
+            ))
+        }
         if let creditsBalance {
             cards.append(CodexUsageCard(
                 title: creditsBalance,
@@ -406,6 +426,14 @@ private struct CodexUsageSnapshot {
         let index = Int(date.timeIntervalSinceReferenceDate / 4) % cards.count
         return cards[index]
     }
+
+    func withModelContext(_ context: CodexModelContext?) -> CodexUsageSnapshot {
+        CodexUsageSnapshot(
+            limits: limits,
+            creditsBalance: creditsBalance,
+            modelContext: context ?? modelContext
+        )
+    }
 }
 
 private struct CodexUsageCard {
@@ -413,6 +441,50 @@ private struct CodexUsageCard {
     let subtitle: String
     let shortLabel: String
     let percentRemaining: Double?
+}
+
+private struct CodexModelContext {
+    let model: String?
+    let reasoning: String?
+
+    var modelLabel: String {
+        guard let model, !model.isEmpty else { return "Model unavailable" }
+        switch model.lowercased() {
+        case let value where value.contains("astra"): return "Astra"
+        case let value where value.contains("luna"): return "Luna"
+        case let value where value.contains("terra"): return "Terra"
+        case let value where value.contains("sol"): return "Sol"
+        default: return model
+        }
+    }
+
+    var shortModelLabel: String {
+        modelLabel.count > 10 ? String(modelLabel.prefix(10)) : modelLabel
+    }
+
+    var reasoningLabel: String {
+        guard let reasoning, !reasoning.isEmpty else { return "Reasoning unavailable" }
+        switch reasoning.lowercased() {
+        case "none": return "None"
+        case "minimal": return "Minimal"
+        case "low": return "Low"
+        case "medium": return "Medium"
+        case "high": return "High"
+        case "xhigh": return "XHigh"
+        case "max": return "Max"
+        case "ultra": return "Ultra"
+        default: return reasoning.capitalized
+        }
+    }
+
+    var summary: String {
+        switch (model, reasoning) {
+        case (.some, .some): return "\(modelLabel) · \(reasoningLabel)"
+        case (.some, nil): return modelLabel
+        case (nil, .some): return "Model unavailable · \(reasoningLabel)"
+        case (nil, nil): return "Model unavailable"
+        }
+    }
 }
 
 private struct CodexUsageLimit: Identifiable {
@@ -461,7 +533,9 @@ private enum CodexUsageStore {
     static func read() async -> CodexUsageSnapshot {
         // usage.json is an optional override for people maintaining the file
         // with their own tooling; Codex's own session logs are the default source.
-        if let override = readUsageFile() { return override }
+        if let override = readUsageFile() {
+            return override.withModelContext(CodexSessionsStore.latestModelContext())
+        }
         return CodexSessionsStore.read() ?? .empty
     }
 
@@ -543,10 +617,18 @@ private enum CodexSessionsStore {
         .appendingPathComponent(".codex/sessions")
 
     static func read() -> CodexUsageSnapshot? {
-        for fileURL in recentRolloutFiles(limit: 8) {
-            if let snapshot = latestSnapshot(in: fileURL) { return snapshot }
+        let files = recentRolloutFiles(limit: 8)
+        let modelContext = latestModelContext(in: files)
+        for fileURL in files {
+            if let snapshot = latestSnapshot(in: fileURL) {
+                return snapshot.withModelContext(modelContext)
+            }
         }
-        return nil
+        return modelContext.map { CodexUsageSnapshot(limits: [], creditsBalance: nil, modelContext: $0) }
+    }
+
+    static func latestModelContext() -> CodexModelContext? {
+        latestModelContext(in: recentRolloutFiles(limit: 8))
     }
 
     // Directory and file names sort chronologically (YYYY/MM/DD, timestamped
@@ -586,6 +668,52 @@ private enum CodexSessionsStore {
             searchRange = data[..<lineStart].range(of: marker, options: .backwards)
         }
         return nil
+    }
+
+    private static func latestModelContext(in files: [URL]) -> CodexModelContext? {
+        var latest: (date: Date, context: CodexModelContext)?
+        let decoder = JSONDecoder()
+
+        for fileURL in files {
+            guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else { continue }
+            let fileDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+                ?? .distantPast
+            var model: String?
+            var reasoning: String?
+
+            for line in data.split(separator: UInt8(ascii: "\n")) {
+                guard let envelope = try? decoder.decode(RolloutLine.self, from: Data(line)) else { continue }
+
+                let contextModel: String?
+                let contextReasoning: String?
+                if envelope.type == "turn_context" {
+                    contextModel = envelope.payload?.contextModel
+                    contextReasoning = envelope.payload?.contextEffort
+                } else if envelope.type == "event_msg",
+                          envelope.payload?.type == "thread_settings_applied" {
+                    contextModel = envelope.payload?.threadSettings?.model
+                    contextReasoning = envelope.payload?.threadSettings?.reasoningEffort
+                } else {
+                    continue
+                }
+
+                if let contextModel = contextModel?.trimmingCharacters(in: .whitespacesAndNewlines), !contextModel.isEmpty {
+                    model = contextModel
+                }
+                if let contextReasoning = contextReasoning?.trimmingCharacters(in: .whitespacesAndNewlines), !contextReasoning.isEmpty {
+                    reasoning = contextReasoning.lowercased()
+                }
+                guard model != nil || reasoning != nil else { continue }
+
+                let date = parseDate(envelope.timestamp) ?? fileDate
+                let context = CodexModelContext(model: model, reasoning: reasoning)
+                if latest == nil || date >= latest!.date {
+                    latest = (date, context)
+                }
+            }
+        }
+
+        return latest?.context
     }
 
     private static func decodeSnapshot(from line: Data) -> CodexUsageSnapshot? {
@@ -630,15 +758,68 @@ private enum CodexSessionsStore {
     }
 
     private struct RolloutLine: Decodable {
+        let timestamp: String?
+        let type: String?
         let payload: Payload?
 
         struct Payload: Decodable {
             let rateLimits: RateLimits?
+            let type: String?
+            let threadSettings: ThreadSettings?
+            let model: String?
+            let effort: String?
+            let reasoningEffort: String?
+            let collaborationMode: CollaborationMode?
 
             enum CodingKeys: String, CodingKey {
                 case rateLimits = "rate_limits"
+                case type
+                case threadSettings = "thread_settings"
+                case model
+                case effort
+                case reasoningEffort = "reasoning_effort"
+                case collaborationMode = "collaboration_mode"
+            }
+
+            var contextModel: String? {
+                model ?? collaborationMode?.settings?.model
+            }
+
+            var contextEffort: String? {
+                effort ?? reasoningEffort ?? collaborationMode?.settings?.reasoningEffort
+            }
+
+            struct CollaborationMode: Decodable {
+                let settings: Settings?
+
+                struct Settings: Decodable {
+                    let model: String?
+                    let reasoningEffort: String?
+
+                    enum CodingKeys: String, CodingKey {
+                        case model
+                        case reasoningEffort = "reasoning_effort"
+                    }
+                }
+            }
+
+            struct ThreadSettings: Decodable {
+                let model: String?
+                let reasoningEffort: String?
+
+                enum CodingKeys: String, CodingKey {
+                    case model
+                    case reasoningEffort = "reasoning_effort"
+                }
             }
         }
+    }
+
+    private static func parseDate(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     private struct RateLimits: Decodable {
