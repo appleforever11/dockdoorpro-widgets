@@ -10,6 +10,7 @@
     ],
     "principalClass": "CodexUsagePlugin",
     "sources": [
+        "CodexUsagePercent.swift",
         "CodexUsage.swift",
         "CodexTheme.swift",
         "AstraRingSparkles.swift"

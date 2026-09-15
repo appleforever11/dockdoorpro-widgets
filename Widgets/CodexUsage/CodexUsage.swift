@@ -585,10 +585,10 @@ private enum CodexUsageStore {
         amountLimit: Int64?
     ) -> Double? {
         if let remaining {
-            return min(max(remaining > 1 ? remaining / 100 : remaining, 0), 1)
+            return CodexUsagePercent.fraction(fromPercent: remaining)
         }
         if let used {
-            return min(max(1 - (used > 1 ? used / 100 : used), 0), 1)
+            return 1 - CodexUsagePercent.fraction(fromPercent: used)
         }
         if let amountRemaining, let amountLimit, amountLimit > 0 {
             return min(max(Double(amountRemaining) / Double(amountLimit), 0), 1)
@@ -876,10 +876,10 @@ private struct CodexUsageLimitRecord: Decodable {
 
     var normalizedRemainingPercent: Double {
         if let value = percentRemaining ?? remainingPercentValue {
-            return min(max(value > 1 ? value / 100 : value, 0), 1)
+            return CodexUsagePercent.fraction(fromPercent: value)
         }
         if let value = percentUsed ?? usedPercent {
-            return min(max(1 - (value > 1 ? value / 100 : value), 0), 1)
+            return 1 - CodexUsagePercent.fraction(fromPercent: value)
         }
         if let remaining, let limit, limit > 0 {
             return min(max(Double(remaining) / Double(limit), 0), 1)

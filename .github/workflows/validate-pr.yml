@@ -16,6 +16,9 @@ jobs:
       - name: Build widgets
         run: bash scripts/build-widgets.sh
 
+      - name: Test Codex usage percentage parsing
+        run: bash scripts/test-codex-usage.sh
+
       - name: Validate widget folder names
         run: |
           for dir in Widgets/*/; do
