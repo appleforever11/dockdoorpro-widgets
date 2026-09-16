@@ -8,7 +8,7 @@ final class CodexUsagePlugin: WidgetPlugin, DockDoorWidgetProvider {
     var id: String { codexUsageWidgetId }
     var name: String { "Codex Usage" }
     var iconSymbol: String { "gauge.with.dots.needle.67percent" }
-    var widgetDescription: String { "Read-only Codex usage with model-colored themes and an optional animated Astra ring" }
+    var widgetDescription: String { "Read-only Codex usage with current model and reasoning, model-colored themes, and an optional animated Astra ring" }
     var supportedOrientations: [WidgetOrientation] { [.horizontal, .vertical] }
 
     @MainActor
@@ -176,6 +176,10 @@ private struct CodexUsagePanelView: View {
                     Text(snapshot.resetSummary(now: now))
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.tertiary)
+                    Text(snapshot.modelSummary)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(theme.accent)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 0)
             }
@@ -359,12 +363,14 @@ private struct UsageStat: View {
 private struct CodexUsageSnapshot {
     let limits: [CodexUsageLimit]
     let creditsBalance: String?
+    let modelContext: CodexModelContext?
 
-    static let empty = CodexUsageSnapshot(limits: [], creditsBalance: nil)
+    static let empty = CodexUsageSnapshot(limits: [], creditsBalance: nil, modelContext: nil)
 
     var primaryLimit: CodexUsageLimit? { limits.first }
 
     var primaryPercent: Double? { primaryLimit?.percentRemaining }
+    var modelSummary: String { modelContext?.summary ?? "Model unavailable" }
     var primaryTitle: String { primaryLimit?.percentLabel ?? "No data" }
     var primarySubtitle: String {
         primaryLimit.map { "\($0.name) - \($0.resetLabel)" } ?? "Run a Codex session to record usage"
@@ -392,6 +398,14 @@ private struct CodexUsageSnapshot {
                 percentRemaining: limit.percentRemaining
             )
         }
+        if let modelContext {
+            cards.append(CodexUsageCard(
+                title: modelContext.modelLabel,
+                subtitle: "\(modelContext.reasoningLabel) effort",
+                shortLabel: modelContext.shortModelLabel,
+                percentRemaining: nil
+            ))
+        }
         if let creditsBalance {
             cards.append(CodexUsageCard(
                 title: creditsBalance,
@@ -406,6 +420,14 @@ private struct CodexUsageSnapshot {
         let index = Int(date.timeIntervalSinceReferenceDate / 4) % cards.count
         return cards[index]
     }
+
+    func withModelContext(_ context: CodexModelContext?) -> CodexUsageSnapshot {
+        CodexUsageSnapshot(
+            limits: limits,
+            creditsBalance: creditsBalance,
+            modelContext: context ?? modelContext
+        )
+    }
 }
 
 private struct CodexUsageCard {
@@ -413,6 +435,50 @@ private struct CodexUsageCard {
     let subtitle: String
     let shortLabel: String
     let percentRemaining: Double?
+}
+
+private struct CodexModelContext {
+    let model: String?
+    let reasoning: String?
+
+    var modelLabel: String {
+        guard let model, !model.isEmpty else { return "Model unavailable" }
+        switch model.lowercased() {
+        case let value where value.contains("astra"): return "Astra"
+        case let value where value.contains("luna"): return "Luna"
+        case let value where value.contains("terra"): return "Terra"
+        case let value where value.contains("sol"): return "Sol"
+        default: return model
+        }
+    }
+
+    var shortModelLabel: String {
+        modelLabel.count > 10 ? String(modelLabel.prefix(10)) : modelLabel
+    }
+
+    var reasoningLabel: String {
+        guard let reasoning, !reasoning.isEmpty else { return "Reasoning unavailable" }
+        switch reasoning.lowercased() {
+        case "none": return "None"
+        case "minimal": return "Minimal"
+        case "low": return "Low"
+        case "medium": return "Medium"
+        case "high": return "High"
+        case "xhigh": return "XHigh"
+        case "max": return "Max"
+        case "ultra": return "Ultra"
+        default: return reasoning.capitalized
+        }
+    }
+
+    var summary: String {
+        switch (model, reasoning) {
+        case (.some, .some): return "\(modelLabel) · \(reasoningLabel)"
+        case (.some, nil): return modelLabel
+        case (nil, .some): return "Model unavailable · \(reasoningLabel)"
+        case (nil, nil): return "Model unavailable"
+        }
+    }
 }
 
 private struct CodexUsageLimit: Identifiable {
@@ -461,7 +527,9 @@ private enum CodexUsageStore {
     static func read() async -> CodexUsageSnapshot {
         // usage.json is an optional override for people maintaining the file
         // with their own tooling; Codex's own session logs are the default source.
-        if let override = readUsageFile() { return override }
+        if let override = readUsageFile() {
+            return override.withModelContext(CodexSessionsStore.latestModelContext())
+        }
         return CodexSessionsStore.read() ?? .empty
     }
 
@@ -501,7 +569,7 @@ private enum CodexUsageStore {
             limits = decodedLimits
         }
 
-        return CodexUsageSnapshot(limits: limits, creditsBalance: file.creditsBalance)
+        return CodexUsageSnapshot(limits: limits, creditsBalance: file.creditsBalance, modelContext: nil)
     }
 
     private static func normalizedRemaining(
@@ -511,15 +579,22 @@ private enum CodexUsageStore {
         amountLimit: Int64?
     ) -> Double? {
         if let remaining {
-            return min(max(remaining > 1 ? remaining / 100 : remaining, 0), 1)
+            return CodexUsageStore.fraction(fromPercent: remaining)
         }
         if let used {
-            return min(max(1 - (used > 1 ? used / 100 : used), 0), 1)
+            return 1 - CodexUsageStore.fraction(fromPercent: used)
         }
         if let amountRemaining, let amountLimit, amountLimit > 0 {
             return min(max(Double(amountRemaining) / Double(amountLimit), 0), 1)
         }
         return nil
+    }
+
+    /// `usage.json` percentages are whole numbers, so `1` is 1% and `100` is
+    /// 100%. Values below 1 are still read as 0...1 fractions.
+    static func fraction(fromPercent value: Double) -> Double {
+        let fraction = value >= 1 ? value / 100 : value
+        return min(max(fraction, 0), 1)
     }
 
     private static func defaultSymbol(for name: String) -> String {
@@ -543,10 +618,18 @@ private enum CodexSessionsStore {
         .appendingPathComponent(".codex/sessions")
 
     static func read() -> CodexUsageSnapshot? {
-        for fileURL in recentRolloutFiles(limit: 8) {
-            if let snapshot = latestSnapshot(in: fileURL) { return snapshot }
+        let files = recentRolloutFiles(limit: 8)
+        let modelContext = latestModelContext(in: files)
+        for fileURL in files {
+            if let snapshot = latestSnapshot(in: fileURL) {
+                return snapshot.withModelContext(modelContext)
+            }
         }
-        return nil
+        return modelContext.map { CodexUsageSnapshot(limits: [], creditsBalance: nil, modelContext: $0) }
+    }
+
+    static func latestModelContext() -> CodexModelContext? {
+        latestModelContext(in: recentRolloutFiles(limit: 8))
     }
 
     // Directory and file names sort chronologically (YYYY/MM/DD, timestamped
@@ -572,20 +655,68 @@ private enum CodexSessionsStore {
     }
 
     private static func latestSnapshot(in fileURL: URL) -> CodexUsageSnapshot? {
+        latestLine(in: fileURL, marker: "\"rate_limits\"", decode: decodeSnapshot)
+    }
+
+    /// Codex writes one `turn_context` line per turn with the model and effort
+    /// in use; older builds only recorded them in `thread_settings_applied`.
+    /// Like the rate limits, only the newest line matters, so this is a
+    /// backwards marker search rather than a decode of every line: rollout
+    /// files run to tens of megabytes and this is called every few seconds.
+    private static func latestModelContext(in files: [URL]) -> CodexModelContext? {
+        for marker in ["\"turn_context\"", "\"thread_settings_applied\""] {
+            for fileURL in files {
+                if let context = latestLine(in: fileURL, marker: marker, decode: decodeModelContext) {
+                    return context
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Walks a rollout file backwards from the last occurrence of `marker`,
+    /// returning the first line `decode` accepts.
+    private static func latestLine<T>(in fileURL: URL, marker: String, decode: (Data) -> T?) -> T? {
         guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else { return nil }
-        let marker = Data("\"rate_limits\"".utf8)
+        let marker = Data(marker.utf8)
         let newline = UInt8(ascii: "\n")
         var searchRange = data.range(of: marker, options: .backwards)
         while let markerRange = searchRange {
             let lineStart = data[..<markerRange.lowerBound].lastIndex(of: newline)
                 .map { data.index(after: $0) } ?? data.startIndex
             let lineEnd = data[markerRange.lowerBound...].firstIndex(of: newline) ?? data.endIndex
-            if let snapshot = decodeSnapshot(from: data.subdata(in: lineStart..<lineEnd)) {
-                return snapshot
+            if let value = decode(data.subdata(in: lineStart..<lineEnd)) {
+                return value
             }
             searchRange = data[..<lineStart].range(of: marker, options: .backwards)
         }
         return nil
+    }
+
+    private static func decodeModelContext(from line: Data) -> CodexModelContext? {
+        guard let decoded = try? JSONDecoder().decode(RolloutLine.self, from: line),
+              let payload = decoded.payload
+        else { return nil }
+
+        let model: String?
+        let effort: String?
+        if decoded.type == "turn_context" {
+            model = payload.contextModel
+            effort = payload.contextEffort
+        } else if decoded.type == "event_msg", payload.type == "thread_settings_applied" {
+            model = payload.threadSettings?.model
+            effort = payload.threadSettings?.reasoningEffort
+        } else {
+            return nil
+        }
+
+        let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEffort = effort?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard trimmedModel?.isEmpty == false || trimmedEffort?.isEmpty == false else { return nil }
+        return CodexModelContext(
+            model: trimmedModel?.isEmpty == false ? trimmedModel : nil,
+            reasoning: trimmedEffort?.isEmpty == false ? trimmedEffort : nil
+        )
     }
 
     private static func decodeSnapshot(from line: Data) -> CodexUsageSnapshot? {
@@ -604,7 +735,7 @@ private enum CodexSessionsStore {
             limits.append(limit(named: prefix + windowName(minutes: window.windowMinutes, fallback: "Weekly"), usedPercent: used, resetsAt: window.resetsAt))
         }
         guard !limits.isEmpty else { return nil }
-        return CodexUsageSnapshot(limits: limits, creditsBalance: nil)
+        return CodexUsageSnapshot(limits: limits, creditsBalance: nil, modelContext: nil)
     }
 
     private static func limit(named name: String, usedPercent: Double, resetsAt: Double?) -> CodexUsageLimit {
@@ -630,13 +761,58 @@ private enum CodexSessionsStore {
     }
 
     private struct RolloutLine: Decodable {
+        let type: String?
         let payload: Payload?
 
         struct Payload: Decodable {
             let rateLimits: RateLimits?
+            let type: String?
+            let threadSettings: ThreadSettings?
+            let model: String?
+            let effort: String?
+            let reasoningEffort: String?
+            let collaborationMode: CollaborationMode?
 
             enum CodingKeys: String, CodingKey {
                 case rateLimits = "rate_limits"
+                case type
+                case threadSettings = "thread_settings"
+                case model
+                case effort
+                case reasoningEffort = "reasoning_effort"
+                case collaborationMode = "collaboration_mode"
+            }
+
+            var contextModel: String? {
+                model ?? collaborationMode?.settings?.model
+            }
+
+            var contextEffort: String? {
+                effort ?? reasoningEffort ?? collaborationMode?.settings?.reasoningEffort
+            }
+
+            struct CollaborationMode: Decodable {
+                let settings: Settings?
+
+                struct Settings: Decodable {
+                    let model: String?
+                    let reasoningEffort: String?
+
+                    enum CodingKeys: String, CodingKey {
+                        case model
+                        case reasoningEffort = "reasoning_effort"
+                    }
+                }
+            }
+
+            struct ThreadSettings: Decodable {
+                let model: String?
+                let reasoningEffort: String?
+
+                enum CodingKeys: String, CodingKey {
+                    case model
+                    case reasoningEffort = "reasoning_effort"
+                }
             }
         }
     }
@@ -695,10 +871,10 @@ private struct CodexUsageLimitRecord: Decodable {
 
     var normalizedRemainingPercent: Double {
         if let value = percentRemaining ?? remainingPercentValue {
-            return min(max(value > 1 ? value / 100 : value, 0), 1)
+            return CodexUsageStore.fraction(fromPercent: value)
         }
         if let value = percentUsed ?? usedPercent {
-            return min(max(1 - (value > 1 ? value / 100 : value), 0), 1)
+            return 1 - CodexUsageStore.fraction(fromPercent: value)
         }
         if let remaining, let limit, limit > 0 {
             return min(max(Double(remaining) / Double(limit), 0), 1)
