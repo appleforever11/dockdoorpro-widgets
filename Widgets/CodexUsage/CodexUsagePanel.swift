@@ -61,6 +61,8 @@ struct CodexUsagePanelView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(14)
+            // The panel provides an intrinsic size; dock roots remain host-sized.
+            .frame(width: 350, height: 500)
             .background(CodexThemeBackground(theme: theme))
             .tint(theme.accent)
             .task(id: timeline.date) { await model.tick() }
