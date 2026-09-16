@@ -36,6 +36,7 @@ final class CodexUsagePlugin: WidgetPlugin, DockDoorWidgetProvider {
     }
 }
 
+@MainActor
 private struct CodexUsageCompactView: View {
     let size: CGSize
     let isVertical: Bool

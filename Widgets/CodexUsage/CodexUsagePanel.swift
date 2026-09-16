@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Marketplace edition: source-backed pages, with appearance owned by the host.
+@MainActor
 struct CodexUsagePanelView: View {
     let model: CodexUsageModel
     let dismiss: () -> Void
