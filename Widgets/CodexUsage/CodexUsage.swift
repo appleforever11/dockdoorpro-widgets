@@ -365,13 +365,7 @@ private struct CodexUsageSnapshot {
     let creditsBalance: String?
     let modelContext: CodexModelContext?
 
-    init(limits: [CodexUsageLimit], creditsBalance: String?, modelContext: CodexModelContext? = nil) {
-        self.limits = limits
-        self.creditsBalance = creditsBalance
-        self.modelContext = modelContext
-    }
-
-    static let empty = CodexUsageSnapshot(limits: [], creditsBalance: nil)
+    static let empty = CodexUsageSnapshot(limits: [], creditsBalance: nil, modelContext: nil)
 
     var primaryLimit: CodexUsageLimit? { limits.first }
 
@@ -407,7 +401,7 @@ private struct CodexUsageSnapshot {
         if let modelContext {
             cards.append(CodexUsageCard(
                 title: modelContext.modelLabel,
-                subtitle: "\(modelContext.reasoningLabel) · Current session",
+                subtitle: "\(modelContext.reasoningLabel) effort",
                 shortLabel: modelContext.shortModelLabel,
                 percentRemaining: nil
             ))
@@ -575,7 +569,7 @@ private enum CodexUsageStore {
             limits = decodedLimits
         }
 
-        return CodexUsageSnapshot(limits: limits, creditsBalance: file.creditsBalance)
+        return CodexUsageSnapshot(limits: limits, creditsBalance: file.creditsBalance, modelContext: nil)
     }
 
     private static func normalizedRemaining(
@@ -585,15 +579,22 @@ private enum CodexUsageStore {
         amountLimit: Int64?
     ) -> Double? {
         if let remaining {
-            return CodexUsagePercent.fraction(fromPercent: remaining)
+            return CodexUsageStore.fraction(fromPercent: remaining)
         }
         if let used {
-            return 1 - CodexUsagePercent.fraction(fromPercent: used)
+            return 1 - CodexUsageStore.fraction(fromPercent: used)
         }
         if let amountRemaining, let amountLimit, amountLimit > 0 {
             return min(max(Double(amountRemaining) / Double(amountLimit), 0), 1)
         }
         return nil
+    }
+
+    /// `usage.json` percentages are whole numbers, so `1` is 1% and `100` is
+    /// 100%. Values below 1 are still read as 0...1 fractions.
+    static func fraction(fromPercent value: Double) -> Double {
+        let fraction = value >= 1 ? value / 100 : value
+        return min(max(fraction, 0), 1)
     }
 
     private static func defaultSymbol(for name: String) -> String {
@@ -654,66 +655,68 @@ private enum CodexSessionsStore {
     }
 
     private static func latestSnapshot(in fileURL: URL) -> CodexUsageSnapshot? {
+        latestLine(in: fileURL, marker: "\"rate_limits\"", decode: decodeSnapshot)
+    }
+
+    /// Codex writes one `turn_context` line per turn with the model and effort
+    /// in use; older builds only recorded them in `thread_settings_applied`.
+    /// Like the rate limits, only the newest line matters, so this is a
+    /// backwards marker search rather than a decode of every line: rollout
+    /// files run to tens of megabytes and this is called every few seconds.
+    private static func latestModelContext(in files: [URL]) -> CodexModelContext? {
+        for marker in ["\"turn_context\"", "\"thread_settings_applied\""] {
+            for fileURL in files {
+                if let context = latestLine(in: fileURL, marker: marker, decode: decodeModelContext) {
+                    return context
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Walks a rollout file backwards from the last occurrence of `marker`,
+    /// returning the first line `decode` accepts.
+    private static func latestLine<T>(in fileURL: URL, marker: String, decode: (Data) -> T?) -> T? {
         guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else { return nil }
-        let marker = Data("\"rate_limits\"".utf8)
+        let marker = Data(marker.utf8)
         let newline = UInt8(ascii: "\n")
         var searchRange = data.range(of: marker, options: .backwards)
         while let markerRange = searchRange {
             let lineStart = data[..<markerRange.lowerBound].lastIndex(of: newline)
                 .map { data.index(after: $0) } ?? data.startIndex
             let lineEnd = data[markerRange.lowerBound...].firstIndex(of: newline) ?? data.endIndex
-            if let snapshot = decodeSnapshot(from: data.subdata(in: lineStart..<lineEnd)) {
-                return snapshot
+            if let value = decode(data.subdata(in: lineStart..<lineEnd)) {
+                return value
             }
             searchRange = data[..<lineStart].range(of: marker, options: .backwards)
         }
         return nil
     }
 
-    private static func latestModelContext(in files: [URL]) -> CodexModelContext? {
-        var latest: (date: Date, context: CodexModelContext)?
-        let decoder = JSONDecoder()
+    private static func decodeModelContext(from line: Data) -> CodexModelContext? {
+        guard let decoded = try? JSONDecoder().decode(RolloutLine.self, from: line),
+              let payload = decoded.payload
+        else { return nil }
 
-        for fileURL in files {
-            guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else { continue }
-            let fileDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-                ?? .distantPast
-            var model: String?
-            var reasoning: String?
-
-            for line in data.split(separator: UInt8(ascii: "\n")) {
-                guard let envelope = try? decoder.decode(RolloutLine.self, from: Data(line)) else { continue }
-
-                let contextModel: String?
-                let contextReasoning: String?
-                if envelope.type == "turn_context" {
-                    contextModel = envelope.payload?.contextModel
-                    contextReasoning = envelope.payload?.contextEffort
-                } else if envelope.type == "event_msg",
-                          envelope.payload?.type == "thread_settings_applied" {
-                    contextModel = envelope.payload?.threadSettings?.model
-                    contextReasoning = envelope.payload?.threadSettings?.reasoningEffort
-                } else {
-                    continue
-                }
-
-                if let contextModel = contextModel?.trimmingCharacters(in: .whitespacesAndNewlines), !contextModel.isEmpty {
-                    model = contextModel
-                }
-                if let contextReasoning = contextReasoning?.trimmingCharacters(in: .whitespacesAndNewlines), !contextReasoning.isEmpty {
-                    reasoning = contextReasoning.lowercased()
-                }
-                guard model != nil || reasoning != nil else { continue }
-
-                let date = parseDate(envelope.timestamp) ?? fileDate
-                let context = CodexModelContext(model: model, reasoning: reasoning)
-                if latest == nil || date >= latest!.date {
-                    latest = (date, context)
-                }
-            }
+        let model: String?
+        let effort: String?
+        if decoded.type == "turn_context" {
+            model = payload.contextModel
+            effort = payload.contextEffort
+        } else if decoded.type == "event_msg", payload.type == "thread_settings_applied" {
+            model = payload.threadSettings?.model
+            effort = payload.threadSettings?.reasoningEffort
+        } else {
+            return nil
         }
 
-        return latest?.context
+        let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEffort = effort?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard trimmedModel?.isEmpty == false || trimmedEffort?.isEmpty == false else { return nil }
+        return CodexModelContext(
+            model: trimmedModel?.isEmpty == false ? trimmedModel : nil,
+            reasoning: trimmedEffort?.isEmpty == false ? trimmedEffort : nil
+        )
     }
 
     private static func decodeSnapshot(from line: Data) -> CodexUsageSnapshot? {
@@ -732,7 +735,7 @@ private enum CodexSessionsStore {
             limits.append(limit(named: prefix + windowName(minutes: window.windowMinutes, fallback: "Weekly"), usedPercent: used, resetsAt: window.resetsAt))
         }
         guard !limits.isEmpty else { return nil }
-        return CodexUsageSnapshot(limits: limits, creditsBalance: nil)
+        return CodexUsageSnapshot(limits: limits, creditsBalance: nil, modelContext: nil)
     }
 
     private static func limit(named name: String, usedPercent: Double, resetsAt: Double?) -> CodexUsageLimit {
@@ -758,7 +761,6 @@ private enum CodexSessionsStore {
     }
 
     private struct RolloutLine: Decodable {
-        let timestamp: String?
         let type: String?
         let payload: Payload?
 
@@ -815,13 +817,6 @@ private enum CodexSessionsStore {
         }
     }
 
-    private static func parseDate(_ value: String?) -> Date? {
-        guard let value else { return nil }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
-    }
-
     private struct RateLimits: Decodable {
         let primary: Window?
         let secondary: Window?
@@ -876,10 +871,10 @@ private struct CodexUsageLimitRecord: Decodable {
 
     var normalizedRemainingPercent: Double {
         if let value = percentRemaining ?? remainingPercentValue {
-            return CodexUsagePercent.fraction(fromPercent: value)
+            return CodexUsageStore.fraction(fromPercent: value)
         }
         if let value = percentUsed ?? usedPercent {
-            return 1 - CodexUsagePercent.fraction(fromPercent: value)
+            return 1 - CodexUsageStore.fraction(fromPercent: value)
         }
         if let remaining, let limit, limit > 0 {
             return min(max(Double(remaining) / Double(limit), 0), 1)
