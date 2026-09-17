@@ -120,7 +120,7 @@ struct CodexUsagePanelView: View {
                 Text("7 days").tag(168)
                 Text("Sampled logs").tag(0)
             }.labelsHidden().pickerStyle(.menu)
-            if page == .models {
+            Group {
                 Picker("Model", selection: $modelFilter) {
                     Text("All models").tag("All models")
                     ForEach(Array(Set(model.analytics.samples.map(\.model))).sorted(), id: \.self) { Text($0).tag($0) }

@@ -22,6 +22,8 @@ struct CodexDashboardCardContent: View {
     private var cached: Int { samples.reduce(0) { $0 + $1.cached } }
     private var period: String { hours == 0 ? "Sampled logs" : hours == 24 ? "Past 24 hours · sampled logs" : "Past 7 days · sampled logs" }
 
+    private var scope: String { period + (modelFilter == "All models" ? "" : " · " + friendlyModel(modelFilter)) }
+
     @ViewBuilder var body: some View {
         switch card {
         case .quota: quota
@@ -72,7 +74,7 @@ struct CodexDashboardCardContent: View {
 
     private var totals: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(period).font(.caption2).foregroundStyle(.secondary)
+            Text(scope).font(.caption2).foregroundStyle(.secondary)
             Text(codexTokenLabel(input + output)).font(.title.weight(.bold)).monospacedDigit().foregroundStyle(theme.accent)
             HStack {
                 UsageStat(title: "Input", value: codexTokenLabel(input))
@@ -98,7 +100,7 @@ struct CodexDashboardCardContent: View {
     }
     private func activityChart(hourly: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(period).font(.caption2).foregroundStyle(.secondary)
+            Text(scope).font(.caption2).foregroundStyle(.secondary)
             if samples.isEmpty { empty("No token events in this sample and period.") }
             else {
                 Chart(buckets(hourly: hourly)) { bucket in
@@ -184,7 +186,7 @@ struct CodexDashboardCardContent: View {
     private var mix: some View {
         let grouped = Dictionary(grouping: samples, by: \.model).map { (model: $0.key, tokens: $0.value.reduce(0) { $0 + $1.total }) }.sorted { $0.tokens > $1.tokens }
         return VStack(alignment: .leading, spacing: 10) {
-            Text(period).font(.caption2).foregroundStyle(.secondary)
+            Text(scope).font(.caption2).foregroundStyle(.secondary)
             if grouped.isEmpty { empty("No attributed token samples yet.") }
             ForEach(grouped.prefix(6), id: \.model) { item in
                 VStack(alignment: .leading, spacing: 4) {
@@ -197,7 +199,7 @@ struct CodexDashboardCardContent: View {
 
     private var efficiency: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(period).font(.caption2).foregroundStyle(.secondary)
+            Text(scope).font(.caption2).foregroundStyle(.secondary)
             if input > 0 {
                 Text("\(Int(Double(cached) / Double(input) * 100))% cached").font(.title2.weight(.bold)).foregroundStyle(theme.accent)
                 ProgressView(value: Double(cached), total: Double(input)).tint(theme.accent)
