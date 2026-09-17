@@ -1,4 +1,5 @@
 import SwiftUI
+import DockDoorWidgetSDK
 import Foundation
 
 /// Read-only model artwork shared with the personal 6.0 design.
@@ -8,10 +9,12 @@ struct CodexIdentityArtwork: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isVisible = false
 
+    private var animated: Bool { WidgetDefaults.bool(key: "animateArtwork", widgetId: codexUsageWidgetId, default: true) }
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 18.0,
-                                paused: reduceMotion || !isVisible)) { timeline in
-            let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                                paused: reduceMotion || !animated || !isVisible)) { timeline in
+            let time = reduceMotion || !animated ? 0 : timeline.date.timeIntervalSinceReferenceDate
             Canvas { context, size in
                 let rect = CGRect(origin: .zero, size: size)
                 let base = identity == .astra ? Color(red: 0.065, green: 0.01, blue: 0.18) : identity.base

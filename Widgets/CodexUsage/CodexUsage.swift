@@ -32,6 +32,9 @@ final class CodexUsagePlugin: WidgetPlugin, DockDoorWidgetProvider {
                 options: CodexTheme.allCases.map(\.rawValue),
                 defaultValue: "Luna"
             ),
+            .picker(key: "cardDensity", label: "Card Density", options: ["Compact", "Standard", "Spacious"], defaultValue: "Standard"),
+            .toggle(key: "animateArtwork", label: "Animate Model Artwork", defaultValue: true),
+            .toggle(key: "hoverHaptics", label: "Hover Haptics", defaultValue: false),
         ]
     }
 }
@@ -778,6 +781,18 @@ private struct CodexUsageLimitRecord: Decodable {
 final class CodexUsageModel {
     private(set) var snapshot = CodexUsageSnapshot.empty
     private(set) var lastRead: Date?
+    private(set) var analytics = CodexAnalyticsSnapshot.empty
+    var layout = CodexDashboardLayout.initial
+    let haptics = CodexDashboardHaptics()
+    private let analyticsReader = CodexUsageAnalyticsReader()
+    private var isReadingAnalytics = false
+
+    func tickAnalytics() async {
+        guard !isReadingAnalytics else { return }
+        isReadingAnalytics = true
+        analytics = await analyticsReader.read()
+        isReadingAnalytics = false
+    }
     private var isReading = false
 
     func tick(minimumInterval: TimeInterval = 5) async {
