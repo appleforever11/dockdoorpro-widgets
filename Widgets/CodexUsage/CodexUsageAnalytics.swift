@@ -85,7 +85,10 @@ actor CodexUsageAnalyticsReader {
                     defer { try? handle.close() }
                     let start = max(state.offset, length > UInt64(maximumRead) ? length - UInt64(maximumRead) : 0)
                     let skipped = start > state.offset
-                    if skipped { state.pending = Data(); state.previous = nil }
+                    if skipped {
+                        state.pending = Data(); state.previous = nil
+                        seedContext(in: url, before: Int(start), state: &state)
+                    }
                     try handle.seek(toOffset: start)
                     var data = try handle.read(upToCount: maximumRead) ?? Data()
                     bytes += data.count
@@ -158,6 +161,18 @@ actor CodexUsageAnalyticsReader {
             model: state.model, effort: state.effort, input: input,
             cached: min(input, delta["cached_input_tokens"] ?? 0), output: output,
             reasoning: min(output, delta["reasoning_output_tokens"] ?? 0)))
+    }
+
+    // Seed a tail's starting model from the nearest earlier context marker.
+    // Mapped backwards search runs only when bytes are skipped, never per line.
+    private func seedContext(in url: URL, before offset: Int, state: inout FileState) {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return }
+        let end = min(offset, data.count)
+        guard end > 0,
+              let marker = data.range(of: Data("\"turn_context\"".utf8), options: .backwards, in: 0..<end) else { return }
+        let start = data[..<marker.lowerBound].lastIndex(of: 10).map { $0 + 1 } ?? 0
+        guard let newline = data[marker.upperBound...].firstIndex(of: 10), newline <= end else { return }
+        consume(Data(data[start..<newline]), state: &state, fallback: .distantPast, file: url.lastPathComponent)
     }
 
     private func counts(_ value: Any?) -> [String: Int]? {

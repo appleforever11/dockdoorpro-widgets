@@ -11,7 +11,7 @@ final class CodexUsagePlugin: WidgetPlugin, DockDoorWidgetProvider {
     var id: String { codexUsageWidgetId }
     var name: String { "Codex Usage" }
     var iconSymbol: String { "gauge.with.dots.needle.67percent" }
-    var widgetDescription: String { "Read-only Codex usage with a themed dashboard, current model and reasoning, and local source status" }
+    var widgetDescription: String { "Read-only Codex dashboard with usage limits, sampled token analytics, model themes, and movable cards" }
     var supportedOrientations: [WidgetOrientation] { [.horizontal, .vertical] }
 
     @MainActor

@@ -106,7 +106,18 @@ struct CodexDashboardCardContent: View {
                         .foregroundStyle(theme.accent.gradient)
                         .cornerRadius(3)
                 }
-                .chartYAxis { AxisMarks(position: .leading) }
+                 .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 3)) { _ in
+                        AxisGridLine()
+                        AxisValueLabel(format: hourly ? .dateTime.hour() : .dateTime.month(.abbreviated).day())
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+                        AxisGridLine()
+                        AxisValueLabel { if let tokens = value.as(Int.self) { Text(codexTokenLabel(tokens)) } }
+                    }
+                }
                 .frame(height: 120)
                 .accessibilityLabel(hourly ? "Sampled hourly token activity" : "Sampled daily token activity")
                 Text("\(samples.count) recorded events · \(codexTokenLabel(input + output)) tokens")
@@ -210,7 +221,7 @@ struct CodexDashboardCardContent: View {
             row("New bytes read", codexTokenLabel(analytics.bytesRead))
             if analytics.unavailableFiles > 0 { row("Unavailable logs", "\(analytics.unavailableFiles)") }
             Text("Limits come from local session records or usage.json. Check time is not the age of those limits.").font(.caption2).foregroundStyle(.secondary)
-            Text("Analytics retain up to 512 events per log and read at most 1 MB per changed log every 30 seconds. Sampled totals exclude older history.")
+            Text("Analytics retain up to 512 events per log and decode at most 1 MB of new event data per changed log every 30 seconds. Sampled totals exclude older history.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
     }
