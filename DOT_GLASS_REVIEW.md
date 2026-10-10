@@ -31,7 +31,7 @@ Standard persistent WebKit storage owns authentication. No cookie, token, creden
 - Both dock orientations and compact/extended sizes use SDK metrics.
 - English semantic panel fonts, labelled controls, Cmd-Return send, selected theme accessibility state, reduced motion/transparency support.
 - Developer/demo apps live outside Widgets and are not included in the marketplace bundle.
-- Prior maintainer constraints from PRs #20/#21 and current CONTRIBUTING.md are respected. No external issue, PR update, publication or Discord message has been sent for this local milestone.
+- Prior maintainer constraints from PRs #20/#21 and current CONTRIBUTING.md are respected. The marketplace PR is updated at the user’s request. No release, merge or Discord message has been sent.
 
 ## Validation and release gates
 
@@ -61,4 +61,4 @@ Use the upstream builder: `bash scripts/build-widgets.sh Widgets/DotGlass`. Run 
 Local path: `/Users/kevinhowe/Library/Application Support/DockDoorPro/Widgets/DotGlass.bundle`.
 Backup: `/Users/kevinhowe/Library/Application Support/DockDoorPro/WidgetBackups/DotGlass-before-debut-polish-20261010.bundle`.
 
-Nothing was pushed to GitHub, released through Sparkle, submitted to the marketplace, or posted to Discord.
+The candidate has been pushed to the existing marketplace PR for maintainer review. It has not been merged, released through Sparkle, published to the marketplace or posted to Discord.
