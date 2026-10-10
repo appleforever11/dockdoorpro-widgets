@@ -28,6 +28,7 @@
     "DotVoiceAdapter.swift",
     "DotWebSession.swift",
     "DotRecovery.swift",
-    "DotAttachmentPreview.swift"
+    "DotAttachmentPreview.swift",
+    "DotAppearancePicker.swift"
   ]
 }

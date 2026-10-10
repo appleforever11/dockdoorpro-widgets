@@ -8,7 +8,8 @@ struct DotPanel: View {
     @State private var selectedTheme = DotTheme.current
     @State private var panelIdentity = UUID()
     @State private var showDotPicker = false
-    private var glassOpacity: Double { WidgetDefaults.double(key: "glassOpacity", widgetId: "dot-glass", default: 0.68) }
+    @AppStorage("widget.dot-glass.glassOpacity") private var glassOpacity = 0.68
+    @State private var showAppearance = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -75,20 +76,13 @@ struct DotPanel: View {
                               destructive: connection.microphoneMuted, action: connection.toggleMicrophone)
                     .disabled(connection.microphoneChangePending)
             }
+            DotIconButton(title: "Appearance", symbol: "paintpalette.fill", prominent: true) { showAppearance.toggle() }
+                .popover(isPresented: $showAppearance, arrowEdge: .bottom) {
+                    DotAppearancePicker(theme: $selectedTheme, opacity: $glassOpacity)
+                }
             Menu {
                 Section("Appearance") {
-                    Picker("Orb glow", selection: Binding(
-                        get: { selectedTheme.rawValue },
-                        set: { value in
-                            guard let theme = DotTheme(rawValue: value) else { return }
-                            UserDefaults.standard.set(value, forKey: "widget.dot-glass.theme")
-                            selectedTheme = theme
-                        }
-                    )) {
-                        ForEach(DotTheme.allCases, id: \.rawValue) { theme in
-                            Label(theme.rawValue, systemImage: "circle.fill").tag(theme.rawValue)
-                        }
-                    }
+                    Button { showAppearance = true } label: { Label("Appearance…", systemImage: "paintpalette.fill") }
                 }
                 Section("Conversation") {
                     Button { showDotPicker = true } label: { Label("Choose Dot", systemImage: "circle.circle") }
