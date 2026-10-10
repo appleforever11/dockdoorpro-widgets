@@ -24,7 +24,7 @@ final class DotRecovery {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self, let connection = self.connection,
                       !connection.voiceConnected, !connection.voiceStarting,
                       connection.pendingToken == nil, !connection.needsSetup,
