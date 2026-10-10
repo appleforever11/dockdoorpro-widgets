@@ -119,7 +119,7 @@ struct DotPanel: View {
     private var conversation: some View {
         VStack(spacing: 0) {
             VStack(spacing: 6) {
-                DotRing(phase: connection.phase, diameter: 98)
+                DotRing(phase: connection.phase, diameter: 98, audioLevel: connection.voiceLevel)
                 Text(connection.voiceConnected && connection.microphoneMuted ? "Microphone muted · Dot can’t hear you" : connection.phase.rawValue)
                     .font(.caption).foregroundStyle(connection.voiceConnected && connection.microphoneMuted ? Color.orange : Color.secondary)
             }.padding(.top, 4).padding(.bottom, 12).frame(maxWidth: .infinity)

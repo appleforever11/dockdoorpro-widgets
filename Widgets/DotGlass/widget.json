@@ -29,6 +29,7 @@
     "DotWebSession.swift",
     "DotRecovery.swift",
     "DotAttachmentPreview.swift",
-    "DotAppearancePicker.swift"
+    "DotAppearancePicker.swift",
+    "DotVoiceOrb.swift"
   ]
 }

@@ -35,7 +35,7 @@ struct DotCompact: View {
     private var themeName: String { selectedTheme.rawValue }
     private var side: CGFloat { max(20, min(size.width, size.height)) }
     var body: some View {
-        DotRing(phase: connection.phase, diameter: side * WidgetMetrics.contentScale)
+        DotRing(phase: connection.phase, diameter: side * WidgetMetrics.contentScale, audioLevel: connection.voiceLevel)
         .overlay(alignment: .topTrailing) {
             if connection.unreadCount > 0 {
                 Text(connection.unreadCount > 99 ? "99+" : "\(connection.unreadCount)")
