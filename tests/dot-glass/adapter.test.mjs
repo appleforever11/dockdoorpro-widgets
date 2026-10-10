@@ -46,7 +46,7 @@ test('rendered messages, guarded sends, duplicate suppression and acknowledgemen
    check(__dotGlass.setMuted(true,'https://chatgpt.com/dots/test-room')==='changed' && micClicks===2,'explicit mute control');
    check(__dotGlass.openSignIn()===false,'no invented sign-in control');
    const login=document.createElement('button');login.textContent='Log in';document.body.append(login);let logins=0;login.onclick=()=>logins++;
-   check(__dotGlass.openSignIn()===true,'open visible login');__dotGlass.openSignIn();check(logins===1,'sign-in clicks only once');
+   check(__dotGlass.openSignIn()===true,'open visible login');__dotGlass.openSignIn();check(logins===1,'sign-in clicks only once');login.remove();
    check(received.at(-1).messages[0].text==='Hello from the fixture.','read rendered content');
    check(await __dotGlass.send('Hello','wrong','https://chatgpt.com/dots/other')==='not-ready','room guard');
    input.textContent='existing draft';check(await __dotGlass.send('Hello','t0','https://chatgpt.com/dots/test-room')==='existing-draft','preserve existing draft');input.textContent='';
@@ -82,6 +82,9 @@ test('rendered messages, guarded sends, duplicate suppression and acknowledgemen
    check(received.at(-1).diagnostic==='composer-not-found','safe diagnostic for missing composer');
    portal.style.display='block';document.querySelector('main').replaceWith(...document.querySelector('main').childNodes);
    __dotGlass.refresh();check(received.at(-1).ready===true && received.at(-1).messages.length>0,'conversation without main wrapper remains readable');
+   document.body.append(login);
+   __dotGlass.refresh();check(received.at(-1).diagnostic==='sign-in-required' && received.at(-1).ready===false,'expired session blocks native sending and reports safe sign-in recovery');
+   login.remove();__dotGlass.refresh();check(received.at(-1).ready===true,'restored session resumes readiness');
    document.getElementById('report').textContent=JSON.stringify({pass:true});
   })().catch(e=>document.getElementById('report').textContent=JSON.stringify({error:e.message}));
   </script></body></html>`;

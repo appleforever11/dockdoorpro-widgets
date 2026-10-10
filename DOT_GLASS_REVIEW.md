@@ -1,63 +1,64 @@
-# Dot Glass marketplace review candidate
+# Dot Glass — local marketplace debut candidate
 
-Ready for maintainer review; not an approved or published marketplace release.
+This package is prepared for review, with the remaining live acceptance checks explicitly listed below. It is not a published marketplace release or a claim of maintainer approval.
 
-## Candidate and validation
+## Behavior
 
-- Widget source: current `codex/dot-glass-review` branch in https://github.com/appleforever11/DotGlass-Marketplace, including the latest personal-fix port.
-- Upstream base: `11d38623d7d30071a74003042ab0aed06ff61056`.
-- Exact upstream builder produced the universal arm64/x86_64 bundle. Distribution archive is unchanged and unsigned, as produced by that builder; the installed local test copy is ad-hoc signed.
-- Earlier candidate GitHub macOS 14 / Xcode 15.4 / Swift 5.10 build and regression suite passed (not validation of this latest port): https://github.com/appleforever11/DotGlass-Marketplace/actions/runs/36960627997
-- Local universal build and the same suite passed. Checks cover URL/origin policy, rendered message/send/acknowledgment behavior, duplicate prevention, inbound-only audio metering, muted calls, microphone controls, native connection state, actual WebKit responsive layout, and Bundle.principalClass loading against the SDK. All 11 widget folders pass the upstream validator.
-- DockDoor settings and its preview were inspected live: plugin discovery, ring rendering, all six theme choices, and Rose-to-Aurora color propagation. The user's chosen theme and dock profiles were preserved.
-- The user verified real two-way Dot voice, continuation while the panel is hidden, and mute/unmute in the installed candidate. Runtime events corroborate microphone capture, WebRTC connection, inbound audio and explicit call teardown. User confirmation supplies the audible/interactive proof; logs alone do not.
-- The native muted warning and microphone button were visually inspected in a clearly labeled example preview. Existing conversation and tour screenshots are examples, not recordings of a live call or private user messages.
+Dot Glass is independent of Codex Tracker. It provides a square, transparent dock orb, a glass conversation panel, six host-managed themes, real Dot messaging, confirmed read receipts, observed-session unread badges, opt-in native macOS notifications, and calls using ChatGPT’s actual Dot voice. AI voice calls are not telephone/PSTN calls.
 
-## Product behavior
+The filled cloud orb recreates the supplied visual reference; it is an independent Metal renderer, not OpenAI’s original renderer. It accepts normalized incoming audio, smooths attack/release, pauses when detached, and supports Reduce Motion. Theme colors also apply to Dot replies; outgoing bubbles remain grey.
 
-Dot Glass provides a compact animated dock ring and a host-owned glass conversation panel. Six host-managed themes color the ring and Dot's message bubbles; outgoing messages remain grey with a subtle theme tint. Text uses the signed-in Dot conversation. Calls use ChatGPT's own call control and actual Dot voice, with native mute/unmute and End call controls.
+First-run setup explains the secure sign-in page and hands off automatically to glass when the rendered Dot composer is ready. A four-step glass tour demonstrates messaging, calling/mute, themes, and notifications without starting a call. It can be previewed before sign-in and revisited from Help.
 
-A call belongs to the plugin session and continues when DockDoor auto-dismisses the panel. Reopen the panel to mute, unmute or end it. Microphone mute state is visible; the widget never silently unmutes. A visible dock timeline samples active voice while the panel is hidden; WebRTC events also report connection transitions. Connected hidden-panel transcripts refresh at most every three seconds while the dock timeline is rendered, supporting observed-session unread badges. No long-lived JavaScript interval or background helper is installed.
+Routine navigation, offline states, missing controls, expired sessions and WebKit termination retain the glass presentation and in-memory transcript/draft. Recovery is limited to three retries. Call starts time out after 20 seconds. Duplicate or uncertain sends are never automatically retried. Poll callbacks and microphone changes reject stale operations. A dropped call produces native guidance rather than exposing the web page or silently redialing.
 
-The embedded Dot page uses a desktop-sized WebKit frame scaled into the compact panel so its call control remains available. WebKit pageZoom stays at 1 to preserve virtualized message measurements. Sign-in pages retain normal scale. The native glass conversation is the primary interface.
+Calls belong to the plugin, not the panel. An active-call sampling task ends with the call and continues when the panel hides. Idle updates use throttled host/panel timelines; there is no permanent main-run-loop Timer. Unread replies are sampled up to every three seconds while a host timeline or active call runs. This is not account-wide background push when DockDoor is quit or not rendering the widget.
 
-## Marketplace boundaries
+## Settings and privacy
 
-- Independent `dot-glass` identity; the personal variant is `dot-glass-personal`. No Codex Tracker imports, helper or data source.
-- `Widgets/DotGlass` contains only widget.json, its explicitly listed Swift files and approved preview.png.
-- Provider metadata and manifest match. Both dock orientations support compact and extended slots using WidgetMetrics; dock root has no fixed frame.
-- DockDoor owns panel presentation. No custom NSWindow/NSPanel, subprocess, installer, agent, updater, private API or global event monitor in widget source.
-- Plugin owns its @Observable connection; views use @Bindable. No singleton ObservableObject.
-- Theme and glass opacity are read through WidgetDefaults and declared by settingsSchema. No direct appearance-setting writes; runtime preferences are namespaced `dot-glass.*`. No migration or other-app configuration writes.
-- Standard persistent WKWebView website storage manages sign-in. The widget does not read cookies, tokens, credentials or keychain contents.
-- The JavaScript bridge reads rendered page elements and operates existing Send, Call and Mute controls. Origin, room, duplicate-send and acknowledgment guards apply. No private network endpoints are called.
-- Audio metering uses public inbound WebRTC getStats only. Microphone audio is not inspected, recorded or logged; no synthesized replacement voice.
-- Microphone permission requests are restricted to the main ChatGPT origin during a user-started call. Call diagnostic logging contains fixed events and state booleans only, never account, message, room, credential or audio content.
-- English labels, semantic panel fonts and Reduce Motion support.
-- Approved preview: opaque sRGB PNG, 1080x608, 757254 bytes; no text/UI. Promotional hero remains outside the widget folder.
+Appearance is read only through WidgetDefaults and declared in settingsSchema. The illustrated appearance popover is a live preview; saving uses DockDoor Settings → Stacks → Dot Glass because the current SDK has no supported setter. No widget code writes host settings keys or other apps’ configuration.
 
-## Review limits and maintainer checks
+Notifications belong to DockDoor Pro, are optional, contain no message text, and coalesce under a widget-specific identifier. Clearing removes only this widget’s known notification. The dock badge reflects newly observed replies after the initial conversation snapshot. Read is shown only from explicit rendered read/seen evidence, never inferred from delivery or a generated response.
 
-Read receipts are shown only when ChatGPT renders explicit read/seen evidence. Delivery alone is never labeled Read. Receipt visibility changes (`data-read` and `aria-hidden`) are observed; timestamps remain rendered source text. An unread badge counts newly observed replies after the initial snapshot, not account-wide unread history. Notifications are opt-in, delivered by the DockDoor host, and omit message content. Native notification authorization and delivery require maintainer testing in the host.
+Standard persistent WebKit storage owns authentication. No cookie, token, credential or keychain extraction. The adapter reads rendered elements and operates existing Send/Call/Mute controls with origin and room checks; it makes no private API calls. Public inbound WebRTC metadata drives the orb. Microphone audio is not inspected or recorded. Fixed diagnostics omit conversations, credentials and audio content. Drafts and transcript survive session navigation/process recovery in memory; quitting the host is not durable draft storage.
 
-This is a third-party rendered-page integration, not an official OpenAI API or endorsement. It requires an account with Dot access and microphone permission. ChatGPT UI changes may require adapter updates. Calls are conversations with the AI Dot, not telephone/PSTN calls. The integration cannot create additional Dots; its selector remembers valid conversations encountered in ChatGPT.
+## Packaging boundaries
 
-Live voice was checked with the user's existing authenticated session. Fresh-account sign-in, provider-specific authentication, and microphone permission onboarding should also be checked on the maintainer's account; no user session was erased to simulate a first install. Historical prototype sign-in is not represented as fresh-account validation of this final candidate.
+- `dot-glass` is distinct from `dot-glass-personal`; personal build and updater are untouched.
+- Widget folder contains only explicitly listed Swift source, widget.json and preview.png.
+- Host-owned panel; no custom app window, helper, agent, subprocess, updater, private API, migration or global event monitor in shipped widget code.
+- @Observable model; shared throttling prevents panel/dock sampling duplication.
+- Both dock orientations and compact/extended sizes use SDK metrics.
+- English semantic panel fonts, labelled controls, Cmd-Return send, selected theme accessibility state, reduced motion/transparency support.
+- Developer/demo apps live outside Widgets and are not included in the marketplace bundle.
+- Prior maintainer constraints from PRs #20/#21 and current CONTRIBUTING.md are respected. No external issue, PR update, publication or Discord message has been sent for this local milestone.
 
-The authenticated WebKit session and native/page bridge are explicitly disclosed for maintainer acceptance. Passing builds and lint does not guarantee approval. Prepared for upstream PR review; no marketplace deployment, GitHub release or Discord post is performed by this submission. The manual read-only review workflow is enabled on the review repository; no deployment workflow has been dispatched.
+## Validation and release gates
 
-## Prior maintainer decisions applied
+Automated local checks: universal arm64/x86_64 build; all 11 widget folders validate; URL/origin guards; rendered-page fixtures for messages, receipts, sending, duplicate prevention, microphone and missing controls; expired-session readiness; recovery exhaustion; hidden panel call ownership; stale voice/microphone state; private notification content by inspection; actual WebKit viewport fixtures; SDK bundle principal-class loading and all four slot layouts. Real GPU output in six palettes was compared with the supplied recording.
 
-- PR #20: no other-app config writes or background-agent workaround, separate identity from Tracker, no auxiliary widget-folder files: https://github.com/ejbills/dockdoorpro-widgets/pull/20
-- PR #21: native host settings and honest absent-data reporting: https://github.com/ejbills/dockdoorpro-widgets/pull/21
-- Current CONTRIBUTING.md and scripts/widget_rules.py remain authoritative.
+Offline UI inspection: actual rebuilt glass tour, four-step navigation, illustrated palette selection and semantic accessibility tree. Example captures are labelled offline examples; they contain no private conversations and do not prove a live call.
 
-## Personal build is separate
+Prior user acceptance: two-way real Dot voice, hidden-panel continuation, mute/unmute, recovered glass chat, and the new filled orb. These checks predate this final stability patch.
 
-The personal repository and Sparkle feed are separate from this marketplace candidate: https://github.com/appleforever11/DotGlass-Private . Its empty feed was tested previously; a notarized production update/install cycle is not part of this marketplace validation. The latest personal 0.9.3 receipt, unread badge, opt-in notification, speaking-aura and opacity fixes are now ported with the marketplace identity and original WebKit session store preserved. The personal companion, updater and build/install scripts are excluded.
+Current installed-build acceptance: the user confirmed messaging/replies and start, mute/unmute, hide/reopen and end-call controls work.
 
-## Latest port validation and review limits
+Still required before release:
 
-The candidate includes semantic read-receipt parsing and visibility-change regression fixtures, receipt retention, reply baseline/deduplication checks, hidden-call continuity, mute controls and bounded transcript sampling. The speaking aura no longer draws the white arc; its shape/light animation depends on speaking state rather than meter amplitude. Speech activity is inferred from inbound WebRTC measurements with a hold interval, not an official semantic speaking API.
+1. Explicit Read receipt, hidden-panel unread badge, badge clearing and native notification delivery/denial.
+2. Repeated call cycles and a longer call; the basic current-build controls were user-verified.
+3. Network loss/return and sleep/wake. Audio cannot continue during actual system sleep; verify useful recovery afterward.
+4. Fresh-account sign-in and provider-specific authentication, without erasing the user's existing session.
+5. Full VoiceOver keyboard walk and OS Reduce Motion/Reduce Transparency settings in DockDoor.
+6. Maintainer acceptance of the rendered-page integration and host permissions. No approval guarantee is made.
 
-The universal upstream build, widget validator, URL/origin checks, JavaScript adapter fixtures, unread state tests, connection checks, real local WebKit viewport tests and bundle class loading are run for this port. Prior signed-in voice acceptance predates this port. Live read receipts, unread badge clearing, native notifications and final glass/aura appearance still require signed-in host acceptance. No new live visual or receipt verification is claimed.
+Sign-in and deliberate Advanced inspection can show ChatGPT. Unknown web layouts degrade to native recovery guidance. Zero exposure to the sign-in web interface cannot be guaranteed with this integration.
+
+## Installation and rollback
+
+Use the upstream builder: `bash scripts/build-widgets.sh Widgets/DotGlass`. Run `bash scripts/test-dot-glass.sh`. Install via DockDoor’s normal widget installation flow. The local installed copy is ad-hoc signed; the universal review archive is the upstream unsigned builder output, not a notarized standalone app.
+
+Local path: `/Users/kevinhowe/Library/Application Support/DockDoorPro/Widgets/DotGlass.bundle`.
+Backup: `/Users/kevinhowe/Library/Application Support/DockDoorPro/WidgetBackups/DotGlass-before-debut-polish-20261010.bundle`.
+
+Nothing was pushed to GitHub, released through Sparkle, submitted to the marketplace, or posted to Discord.

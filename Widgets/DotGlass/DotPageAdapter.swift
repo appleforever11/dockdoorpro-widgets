@@ -119,9 +119,10 @@ enum DotPageAdapter {
         const nameElement = document.querySelector('[aria-label^="Open "][aria-label$="’s profile"]');
         const name = nameElement?.getAttribute('aria-label')?.replace(/^Open /, '').replace(/’s profile$/, '') || (document.title && document.title !== 'ChatGPT' ? document.title.replace(/\s*[-–|]\s*ChatGPT$/, '').trim() : 'Your dot');
         const signedIn = !!document.querySelector('button[aria-label="Open profile menu"], [data-testid="profile-button"], [data-testid="accounts-profile-button"]');
-        const diagnostic = !conversation ? 'dot-route-unrecognized' : !editor() ? 'composer-not-found' : !navigator.onLine ? 'offline' : 'ready';
+        const loginRequired = !signedIn && Array.from(document.querySelectorAll('button, a')).some(n => visible(n) && /^(log in|sign in)$/i.test((n.textContent || '').trim()));
+        const diagnostic = loginRequired ? 'sign-in-required' : !conversation ? 'dot-route-unrecognized' : !editor() ? 'composer-not-found' : !navigator.onLine ? 'offline' : 'ready';
         return { conversation, name, messages, acknowledgement, signedIn, diagnostic,
-          ready: navigator.onLine && !!conversation && visible(editor()),
+          ready: !loginRequired && navigator.onLine && !!conversation && visible(editor()),
           typing: !!Array.from(root()?.querySelectorAll('.typing-indicator, .typing-bubble') || []).find(n => visible(n) && n.getAttribute('data-visible') === 'true'),
           mediaPlaying: Array.from(document.querySelectorAll('audio,video')).some(m => !m.paused && !m.ended && !m.muted && m.volume > 0 && m.readyState >= 2)
         };

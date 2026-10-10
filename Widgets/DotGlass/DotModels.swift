@@ -65,7 +65,7 @@ struct DotVoiceSnapshot: Decodable {
 }
 
 /// Turns incoming audio metadata into a stable speaking on/off signal.
-/// The ring uses this boolean; loudness never changes its animation strength.
+/// Holds speaking across brief audio gaps; the renderer separately receives loudness.
 struct DotSpeechActivity {
     private(set) var isSpeaking = false
     private var holdUntil = Date.distantPast

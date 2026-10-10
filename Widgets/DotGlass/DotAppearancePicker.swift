@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Artwork and controls belong to Dot Glass; no Tracker assets or runtime dependency.
 struct DotAppearancePicker: View {
-    @Binding var theme: DotTheme
-    @Binding var opacity: Double
+    @State var theme: DotTheme
+    @State var opacity: Double
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -11,7 +11,7 @@ struct DotAppearancePicker: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Appearance").font(.system(.title2, design: .rounded).weight(.bold))
-                    Text("Shared by your panel and dock").font(.callout).foregroundStyle(.secondary)
+                    Text("Live theme previews").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 6)
                 Text(theme.rawValue).font(.caption.weight(.semibold))
@@ -24,7 +24,6 @@ struct DotAppearancePicker: View {
                     DotThemeCard(theme: choice, selected: theme == choice) {
                         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
                             theme = choice
-                            UserDefaults.standard.set(choice.rawValue, forKey: "widget.dot-glass.theme")
                         }
                     }
                 }
@@ -51,7 +50,7 @@ struct DotAppearancePicker: View {
             }
             Slider(value: $opacity, in: 0.2...1, step: 0.05) { Text("Glass opacity") }
                 .tint(theme.colors[0]).accessibilityLabel("Glass opacity")
-            Text("Colors update instantly. Voice and messages keep flowing.")
+            Text("Preview only. Save your theme and glass opacity in DockDoor Settings → Stacks → Dot Glass.")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding(20).frame(width: 360)
             .environment(\.colorScheme, .dark)

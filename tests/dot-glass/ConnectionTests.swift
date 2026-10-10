@@ -105,6 +105,23 @@ struct ConnectionChecks {
         connection.webViewWebContentProcessDidTerminate(connection.webView)
         precondition(!connection.showConnection && connection.messages == savedMessages && connection.draft == savedDraft, "WebKit crash must preserve glass, transcript and draft")
         connection.recovery.cancel()
+        connection.ready = false; connection.loading = true
+        connection.recovery.cancel()
+        let deadline = Date()
+        connection.recovery.begin(now: deadline)
+        for seconds in [20.0, 45, 75] { connection.recovery.tick(now: deadline.addingTimeInterval(seconds)) }
+        precondition(connection.recovery.attempts == 3, "Retries must be bounded")
+        connection.recovery.tick(now: deadline.addingTimeInterval(120))
+        precondition(!connection.loading && !connection.showConnection && connection.draft == savedDraft,
+                     "Exhausted recovery must retain glass and draft with actionable guidance")
+        connection.ready = true
+        connection.receiveVoice(DotVoiceSnapshot(connected: false, level: 0, meterAvailable: false))
+        connection.receiveVoice(DotVoiceSnapshot(connected: true, level: 0.2, meterAvailable: true))
+        connection.receiveVoice(DotVoiceSnapshot(connected: false, level: 0, meterAvailable: false))
+        precondition(connection.notice?.contains("call ended") == true, "Call drops need visible recovery guidance")
+        connection.receive(snapshot(room))
+        precondition(connection.notice?.contains("call ended") == true, "Transcript refresh must not erase call-drop guidance")
+        connection.recovery.cancel()
         print("Connection checks passed: setup, call guard, origin, drafts, pending delivery, reconnect, stale voice, bounded meter")
     }
 }

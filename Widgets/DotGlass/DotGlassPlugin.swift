@@ -7,7 +7,7 @@ final class DotGlassPlugin: WidgetPlugin, DockDoorWidgetProvider {
     var id: String { "dot-glass" }
     var name: String { "Dot Glass" }
     var iconSymbol: String { "circle.circle" }
-    var widgetDescription: String { "Your Dot in a glass conversation panel, with real messages and a speaking-animated ring." }
+    var widgetDescription: String { "Your Dot in a glass conversation panel, with real messages, voice calls and a breathing cloud orb." }
     var supportedOrientations: [WidgetOrientation] { [.horizontal, .vertical] }
     func settingsSchema() -> [WidgetSetting] {
         [

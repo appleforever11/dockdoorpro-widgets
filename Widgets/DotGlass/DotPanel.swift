@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import DockDoorWidgetSDK
 
@@ -8,7 +9,7 @@ struct DotPanel: View {
     @State private var selectedTheme = DotTheme.current
     @State private var panelIdentity = UUID()
     @State private var showDotPicker = false
-    @AppStorage("widget.dot-glass.glassOpacity") private var glassOpacity = 0.68
+    @State private var glassOpacity = WidgetDefaults.double(key: "glassOpacity", widgetId: "dot-glass", default: 0.68)
     @State private var showAppearance = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -41,7 +42,7 @@ struct DotPanel: View {
         .sheet(isPresented: $showDotPicker) { DotPicker(connection: connection) }
         .background {
             TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
-                Color.clear.onChange(of: timeline.date) { _, _ in connection.tick(); selectedTheme = DotTheme.current }
+                Color.clear.onChange(of: timeline.date) { _, _ in connection.tick(); selectedTheme = DotTheme.current; glassOpacity = WidgetDefaults.double(key: "glassOpacity", widgetId: "dot-glass", default: 0.68) }
             }.allowsHitTesting(false).accessibilityHidden(true)
         }
         .task { connection.connect() }
@@ -59,8 +60,8 @@ struct DotPanel: View {
                     }
                 }.buttonStyle(.plain).help("Choose Dot").accessibilityLabel("Choose Dot")
                 HStack(spacing: 5) {
-                    Circle().fill(connection.ready ? Color.cyan : Color.secondary).frame(width: 5, height: 5)
-                    Text(connection.connectionState.rawValue).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Circle().fill(connection.voiceConnected && connection.microphoneMuted ? Color.orange : connection.ready ? Color.cyan : Color.secondary).frame(width: 5, height: 5)
+                    Text(connection.voiceConnected ? (connection.microphoneMuted ? "Muted" : connection.voiceSpeaking ? "Speaking" : "Listening") : connection.voiceStarting ? "Calling your Dot…" : connection.connectionState.rawValue).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer()
@@ -78,7 +79,7 @@ struct DotPanel: View {
             }
             DotIconButton(title: "Appearance", symbol: "paintpalette.fill", prominent: true) { showAppearance.toggle() }
                 .popover(isPresented: $showAppearance, arrowEdge: .bottom) {
-                    DotAppearancePicker(theme: $selectedTheme, opacity: $glassOpacity)
+                    DotAppearancePicker(theme: selectedTheme, opacity: glassOpacity)
                 }
             Menu {
                 Section("Appearance") {
@@ -102,6 +103,7 @@ struct DotPanel: View {
                     Text("Delivered by DockDoor Pro · message text stays private")
                 }
                 Section("Help") {
+                    Button { if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") { NSWorkspace.shared.open(url) } } label: { Label("Notification permissions", systemImage: "bell") }
                     Button(action: connection.openMicrophoneSettings) { Label("Microphone permissions", systemImage: "mic") }
                     Button { connection.showTour = true } label: { Label("Quick tour", systemImage: "sparkles") }
                     Button(action: connection.reload) { Label("Reconnect", systemImage: "arrow.clockwise") }
@@ -169,6 +171,7 @@ struct DotPanel: View {
                 .font(.callout).textFieldStyle(.plain).lineLimit(1...5)
                 .focused($focused).onSubmit { if connection.canSend { connection.send() } }
                 .disabled(connection.pendingToken != nil)
+                .accessibilityHint("Press Return to send when connected")
                 .padding(.vertical, 8).padding(.leading, 7)
                 .accessibilityLabel("Message your Dot")
             Button(action: connection.send) {
@@ -176,12 +179,12 @@ struct DotPanel: View {
                     .font(.callout.weight(.semibold)).frame(width: 32, height: 32)
                     .foregroundStyle(connection.canSend ? .white : .secondary)
                     .background(connection.canSend ? Color.blue : Color.primary.opacity(0.06), in: Circle())
-            }.buttonStyle(.plain).disabled(!connection.canSend).help("Send message").accessibilityLabel("Send message")
+            }.buttonStyle(.plain).disabled(!connection.canSend).help("Send message").accessibilityLabel("Send message").keyboardShortcut(.return, modifiers: .command)
         }.padding(8)
             .background {
                 let shape = RoundedRectangle(cornerRadius: 25, style: .continuous)
                 if reduceTransparency {
-                    shape.fill(.regularMaterial)
+                    shape.fill(Color(nsColor: .controlBackgroundColor))
                 } else {
                     shape.fill(.ultraThinMaterial).opacity(panelGlassOpacity)
                 }

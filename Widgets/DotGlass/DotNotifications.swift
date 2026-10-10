@@ -9,6 +9,7 @@ final class DotNotifications {
     private let defaults: UserDefaults
     private let prefix = "dot-glass."
     private var pending = Set<String>()
+    private let deliveryID = "dot-glass.latest-reply"
     init(defaults: UserDefaults) { self.defaults = defaults }
     var enabled: Bool { defaults.bool(forKey: "dot-glass.notifications") }
 
@@ -27,7 +28,7 @@ final class DotNotifications {
 
     func notify() {
         guard enabled else { return }
-        let id = prefix + UUID().uuidString
+        let id = deliveryID
         pending.insert(id)
         let content = UNMutableNotificationContent()
         content.title = "Dot Glass"
@@ -41,11 +42,11 @@ final class DotNotifications {
                 else if !self.pending.contains(id) { self.center.removeDeliveredNotifications(withIdentifiers: [id]) }
             }
         }
-        if pending.count > 100 { clear() }
+
     }
 
     func clear() {
-        guard !pending.isEmpty else { return }
+        pending.insert(deliveryID)
         // Remove only this widget's notifications, never DockDoor/other widgets'.
         center.removePendingNotificationRequests(withIdentifiers: Array(pending))
         center.removeDeliveredNotifications(withIdentifiers: Array(pending))

@@ -8,13 +8,17 @@ struct DotTour: View {
     private var themeName: String { selectedTheme.rawValue }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var palette: [Color] { (DotTheme(rawValue: themeName) ?? .arctic).colors }
-    private let titles = ["Your Dot. A little closer.", "Talk naturally.", "Make it yours."]
-    private let details = ["Send a message at the bottom of the panel. Your real Dot replies here, with your conversation kept together.", "Use the phone button to start a real Dot call. The ring responds to Dot’s voice. Calls continue when the panel hides. Reopen it and use End call when you’re finished.", "Choose one of six colors in DockDoor’s widget settings under Orb glow. Your ring and chat bubbles follow your theme."]
+    private let titles = ["Your Dot. A little closer.", "Talk naturally.", "Make it yours.", "Never miss a reply."]
+    private let details = [
+        "Write at the bottom to message your real Dot. Confirmed read receipts appear beneath your messages.",
+        "The phone button starts a real Dot call. Use the microphone button to mute or unmute. Calls continue when the panel hides; reopen it to end the call.",
+        "Preview six themes with the palette button. Save your choice in DockDoor Settings → Stacks → Dot Glass. Your orb, dock preview and chat bubbles stay in sync.",
+        "Unread replies add a badge to the dock tile. Turn on optional macOS notifications in the menu. Alerts keep message text private."]
     var body: some View {
         VStack(spacing: 16) {
             Spacer(minLength: 8)
             Text("MEET YOUR DOT").font(.caption2.weight(.semibold)).tracking(3).foregroundStyle(.secondary)
-            DotRing(phase: .ready, diameter: 108)
+            DotRing(phase: page == 1 ? .inCall : .ready, diameter: 108)
             VStack(spacing: 12) {
                 Text(titles[page]).font(.title2.weight(.semibold))
                 Text(details[page]).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
@@ -29,7 +33,7 @@ struct DotTour: View {
                 Image(systemName: "phone.fill").font(.largeTitle).padding(20)
                     .background(.thinMaterial, in: Circle()).foregroundStyle(palette[0]).shadow(color: palette[0].opacity(0.2), radius: 16)
                 Text("Microphone permission is requested when you call.").font(.caption).foregroundStyle(.secondary)
-            } else {
+            } else if page == 2 {
                 HStack(spacing: 12) {
                     ForEach(DotTheme.allCases, id: \.rawValue) { theme in
                         Circle().fill(LinearGradient(colors: theme.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -40,16 +44,21 @@ struct DotTour: View {
                     }
                 }
                 Text(themeName).font(.caption).foregroundStyle(.secondary)
+            } else {
+                Label("3 unread messages", systemImage: "bell.badge.fill").font(.headline)
+                    .padding(20).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
+                Text("Notifications are optional. Example badge shown.").font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             HStack(spacing: 7) {
-                ForEach(0..<3) { index in Capsule().fill(index == page ? Color.primary : Color.secondary.opacity(0.25)).frame(width: index == page ? 22 : 6, height: 6) }
-            }.accessibilityLabel("Step \(page + 1) of 3")
+                ForEach(0..<4) { index in Capsule().fill(index == page ? Color.primary : Color.secondary.opacity(0.25)).frame(width: index == page ? 22 : 6, height: 6) }
+            }.accessibilityLabel("Step \(page + 1) of 4")
             HStack {
                 Button("Skip tour", action: connection.finishTour).buttonStyle(.plain).foregroundStyle(.secondary)
                 Spacer()
-                Button(page == 2 ? "Start chatting" : "Continue") {
-                    if page == 2 { connection.finishTour() }
+                if page > 0 { Button("Back") { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { page -= 1 } } }
+                Button(page == 3 ? "Start chatting" : "Continue") {
+                    if page == 3 { connection.finishTour() }
                     else { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { page += 1 } }
                 }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
             }
