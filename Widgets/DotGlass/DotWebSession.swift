@@ -17,6 +17,7 @@ extension DotConnection: WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         loading = true
         ready = false
+        recovery.begin()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -24,9 +25,9 @@ extension DotConnection: WKNavigationDelegate, WKUIDelegate {
         if let targetConversation, webView.url?.absoluteString != targetConversation {
             self.targetConversation = nil
             notice = "ChatGPT opened a different page. Check access to the selected Dot."
-            showConnection = true
+            showConnection = false
         }
-        if DotURLPolicy.conversation(webView.url?.absoluteString) == nil { showConnection = true }
+        // Navigation is transport; only explicit sign-in or Advanced actions expose it.
         webView.evaluateJavaScript(DotPageAdapter.source, completionHandler: nil)
         webView.evaluateJavaScript("window.__dotGlass?.refresh();", completionHandler: nil)
         openSignInIfNeeded()
@@ -45,6 +46,7 @@ extension DotConnection: WKNavigationDelegate, WKUIDelegate {
         loading = false; ready = false; typing = false; mediaPlaying = false
         notice = "The connection paused. Reconnect to continue; your draft is still here."
         stopAudio()
+        recovery.begin()
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {

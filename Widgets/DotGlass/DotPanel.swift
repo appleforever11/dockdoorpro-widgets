@@ -59,7 +59,7 @@ struct DotPanel: View {
                 }.buttonStyle(.plain).help("Choose Dot").accessibilityLabel("Choose Dot")
                 HStack(spacing: 5) {
                     Circle().fill(connection.ready ? Color.cyan : Color.secondary).frame(width: 5, height: 5)
-                    Text(connection.ready ? "Connected to ChatGPT" : "Dot Glass").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(connection.connectionState.rawValue).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer()
@@ -68,22 +68,36 @@ struct DotPanel: View {
                           prominent: true, destructive: connection.voiceConnected || connection.voiceStarting) {
                 if connection.voiceConnected || connection.voiceStarting { connection.stopAudio() }
                 else { connection.startCall() }
-            }
+            }.disabled(!connection.ready && !connection.voiceConnected && !connection.voiceStarting)
             if connection.voiceConnected {
                 DotIconButton(title: connection.microphoneMuted ? "Unmute microphone" : "Mute microphone",
                               symbol: connection.microphoneMuted ? "mic.slash.fill" : "mic.fill",
                               destructive: connection.microphoneMuted, action: connection.toggleMicrophone)
                     .disabled(connection.microphoneChangePending)
             }
-            DotIconButton(title: connection.showConnection ? "Show glass conversation" : "Show ChatGPT connection",
-                          symbol: connection.showConnection ? "bubble.left.and.bubble.right" : "link") {
-                connection.showConnection.toggle()
-            }
             Menu {
+                Section("Appearance") {
+                    Picker("Orb glow", selection: Binding(
+                        get: { selectedTheme.rawValue },
+                        set: { value in
+                            guard let theme = DotTheme(rawValue: value) else { return }
+                            UserDefaults.standard.set(value, forKey: "widget.dot-glass.theme")
+                            selectedTheme = theme
+                        }
+                    )) {
+                        ForEach(DotTheme.allCases, id: \.rawValue) { theme in
+                            Label(theme.rawValue, systemImage: "circle.fill").tag(theme.rawValue)
+                        }
+                    }
+                }
                 Section("Conversation") {
                     Button { showDotPicker = true } label: { Label("Choose Dot", systemImage: "circle.circle") }
-                    Button { connection.showConnection = true } label: { Label("Manage connection", systemImage: "person.crop.circle") }
-                    Button(action: connection.openBrowser) { Label("Open in browser", systemImage: "safari") }
+                    Button(action: connection.reload) { Label("Reconnect", systemImage: "arrow.clockwise") }
+                }
+                Section("Advanced") {
+                    Button(action: connection.beginSetup) { Label("Sign in again", systemImage: "person.crop.circle") }
+                    Button(action: connection.inspectConnection) { Label("Inspect ChatGPT page", systemImage: "safari") }
+                    Button(action: connection.openBrowser) { Label("Open in browser", systemImage: "arrow.up.forward.app") }
                 }
                 Section("Notifications") {
                     if connection.notificationsEnabled {
@@ -94,7 +108,7 @@ struct DotPanel: View {
                     Text("Delivered by DockDoor Pro · message text stays private")
                 }
                 Section("Help") {
-                    Text("Dot Glass review candidate")
+                    Button(action: connection.openMicrophoneSettings) { Label("Microphone permissions", systemImage: "mic") }
                     Button { connection.showTour = true } label: { Label("Quick tour", systemImage: "sparkles") }
                     Button(action: connection.reload) { Label("Reconnect", systemImage: "arrow.clockwise") }
                 }
@@ -120,10 +134,23 @@ struct DotPanel: View {
                 emptyState.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else { DotTranscript(connection: connection) }
             if let notice = connection.notice {
+                VStack(alignment: .leading, spacing: 8) {
                 Text(notice).font(.caption).foregroundStyle(.secondary)
                     .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                     .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal, 18).padding(.bottom, 8)
+                if connection.deliveryUncertain {
+                    Button("Check delivery in browser", action: connection.openBrowser)
+                    Button("I checked — keep my draft", action: connection.confirmDeliveryChecked)
+                } else if !connection.ready && !connection.loading {
+                    HStack {
+                        Button("Try again") { connection.recovery.cancel(); connection.reload() }
+                        Button("Sign in again", action: connection.beginSetup)
+                    }
+                }
+                }.padding(.horizontal, 18).padding(.bottom, 8)
+            }
+            if connection.pendingToken != nil {
+                Text(connection.deliveryUncertain ? "Delivery not confirmed" : "Sending…").font(.caption2).foregroundStyle(.secondary)
             }
             composer
         }.background(.clear)
@@ -133,10 +160,10 @@ struct DotPanel: View {
         VStack(spacing: 12) {
             Text(connection.loading ? "Bringing your Dot closer…" : "A little space for your Dot.")
                 .font(.headline)
-            Text(connection.loading ? "Your conversation will appear here." : "Sign in to ChatGPT and open Your Dot to begin.")
+            Text(connection.loading ? "Your conversation will appear here. You can keep writing while we reconnect." : "Reconnect your Dot to continue chatting.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             if !connection.loading {
-                Button("Connect your Dot") { connection.beginSetup() }
+                Button("Reconnect") { connection.recovery.cancel(); connection.reload() }
                     .buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
             }
         }.padding(28)
@@ -182,7 +209,7 @@ struct DotPanel: View {
                 } else {
                     Button("Quick tour") { connection.showTour = true }
                 Button("Reconnect", action: connection.reload)
-                    Button("Done") { connection.showConnection = false }.disabled(!connection.ready)
+                    Button("Done") { connection.showGlassConversation() }.disabled(!connection.ready)
                 }
             }.controlSize(.small)
         }.padding(14)

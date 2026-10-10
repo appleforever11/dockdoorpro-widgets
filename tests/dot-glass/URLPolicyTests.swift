@@ -2,7 +2,8 @@ import Foundation
 @main struct URLPolicyTests {
  static func main() {
   precondition(DotURLPolicy.conversation("https://chatgpt.com/dots/00000000-0000-0000-0000-000000000001?private=x#fragment")?.absoluteString == "https://chatgpt.com/dots/00000000-0000-0000-0000-000000000001")
-  for value in ["http://chatgpt.com/dots/a", "https://chatgpt.com.evil.test/dots/a", "https://user:pass@chatgpt.com/dots/a", "file:///dots/a", "https://chatgpt.com:123/dots/a", "https://chatgpt.com/c/a", "https://chatgpt.com/dots/", "https://chatgpt.com/dots/home", "https://chatgpt.com/dots/new"] {
+  precondition(DotURLPolicy.conversation("https://chatgpt.com/dots/home/?ignored=x")?.absoluteString == "https://chatgpt.com/dots/home")
+  for value in ["http://chatgpt.com/dots/a", "https://chatgpt.com.evil.test/dots/a", "https://user:pass@chatgpt.com/dots/a", "file:///dots/a", "https://chatgpt.com:123/dots/a", "https://chatgpt.com/c/a", "https://chatgpt.com/dots/", "https://chatgpt.com/dots/new"] {
    precondition(DotURLPolicy.conversation(value) == nil, value)
   }
   precondition(DotURLPolicy.allowsNavigation(URL(string:"https://auth.openai.com/authorize")!))

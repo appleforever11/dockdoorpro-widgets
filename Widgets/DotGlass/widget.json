@@ -26,6 +26,8 @@
     "DotTranscript.swift",
     "DotUnread.swift",
     "DotVoiceAdapter.swift",
-    "DotWebSession.swift"
+    "DotWebSession.swift",
+    "DotRecovery.swift",
+    "DotAttachmentPreview.swift"
   ]
 }

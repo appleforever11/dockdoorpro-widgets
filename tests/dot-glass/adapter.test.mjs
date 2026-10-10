@@ -75,6 +75,13 @@ test('rendered messages, guarded sends, duplicate suppression and acknowledgemen
    const receiptStyle=document.createElement('style');receiptStyle.textContent='._receipt_1cpol_1[aria-hidden="true"]{visibility:hidden}';document.head.append(receiptStyle);
    __dotGlass.refresh();check(received.at(-1).messages.find(m=>m.id==='sent-1').readReceipt===null,'ChatGPT receipt hidden until delivery confirmed');
    actualReceipt.setAttribute('aria-hidden','false');await new Promise(resolve=>setTimeout(resolve,300));check(received.at(-1).messages.find(m=>m.id==='sent-1').readReceipt==='Read 10:44 PM','actual ChatGPT receipt visibility mutation publishes without manual refresh');
+   input.style.display='none';
+   const portal=document.createElement('div');portal.className='ProseMirror';portal.contentEditable='true';document.body.append(portal);
+   __dotGlass.refresh();check(received.at(-1).ready===true,'visible portal composer outside main recognized despite hidden old editor');
+   portal.style.display='none';__dotGlass.refresh();check(received.at(-1).ready===false,'hidden composer does not fake readiness');
+   check(received.at(-1).diagnostic==='composer-not-found','safe diagnostic for missing composer');
+   portal.style.display='block';document.querySelector('main').replaceWith(...document.querySelector('main').childNodes);
+   __dotGlass.refresh();check(received.at(-1).ready===true && received.at(-1).messages.length>0,'conversation without main wrapper remains readable');
    document.getElementById('report').textContent=JSON.stringify({pass:true});
   })().catch(e=>document.getElementById('report').textContent=JSON.stringify({error:e.message}));
   </script></body></html>`;

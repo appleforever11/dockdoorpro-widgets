@@ -64,9 +64,10 @@ struct DotTranscript: View {
                     Text(message.text).font(.callout).lineSpacing(4)
                         .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
+                if let preview = message.imagePreview { DotAttachmentPreview(encoded: preview) }
                 if message.hasAttachment {
-                    Button { connection.showConnection = true } label: {
-                        Label("View attachment", systemImage: "paperclip").font(.caption)
+                    Button { connection.openBrowser() } label: {
+                        Label("View attachment in browser", systemImage: "paperclip").font(.caption)
                     }.buttonStyle(.plain).underline()
                 }
             }
@@ -74,15 +75,15 @@ struct DotTranscript: View {
             .modifier(DotBubbleSurface(isMine: message.isMine))
             .contextMenu {
                 Button("Copy text") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(message.text, forType: .string) }
-                Button("Open original") { connection.showConnection = true }
+                Button("Open original in browser", action: connection.openBrowser)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(message.isMine ? "You" : connection.name): \(message.text)")
             if !message.isMine { Spacer(minLength: 30) }
         }
-        if message.isMine, let receipt = message.readReceipt {
-            Text(receipt).font(.caption2).foregroundStyle(.secondary)
-                .padding(.trailing, 4).accessibilityLabel(receipt)
+        if message.isMine {
+            Text(message.readReceipt ?? "Sent").font(.caption2).foregroundStyle(.secondary)
+                .padding(.trailing, 4).accessibilityLabel(message.readReceipt ?? "Sent")
         }
         }
     }

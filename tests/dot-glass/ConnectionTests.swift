@@ -26,6 +26,19 @@ struct ConnectionChecks {
         }
         connection.receive(snapshot(room))
         precondition(connection.ready && connection.messages == [message])
+        precondition(!connection.needsSetup && !connection.showConnection)
+        connection.finishTour()
+        connection.receive(snapshot(""))
+        precondition(!connection.showConnection && connection.messages == [message], "Intermediate navigation must retain the glass transcript")
+        connection.receive(snapshot(room))
+        precondition(!connection.showConnection, "Recovery must automatically return to glass")
+        connection.inspectConnection()
+        connection.receive(snapshot(room))
+        precondition(connection.showConnection, "Explicit original-page inspection must stay open")
+        connection.showGlassConversation()
+        connection.receive(snapshot("https://chatgpt.com/dots/home"))
+        precondition(connection.ready && !connection.showConnection && connection.messages == [message], "Current Dot home must hand off to glass")
+        connection.receive(snapshot(room))
         precondition(defaults.string(forKey: "dot-glass.conversationURL") == room)
         precondition(defaults.string(forKey: "dotGlass.conversationURL") == nil)
         let acknowledged = DotMessage(id: "fixture", text: "Test fixture only", isMine: false, hasAttachment: false, readReceipt: "Read 10:44 PM")
@@ -34,16 +47,32 @@ struct ConnectionChecks {
         precondition(connection.messages.first?.readReceipt == "Read 10:44 PM", "An observed receipt should remain with its message for this connection")
         connection.draft = "Keep my draft"
         connection.receive(snapshot("https://untrusted.example/dots/00000000-0000-0000-0000-000000000001"))
-        precondition(!connection.ready && connection.messages.isEmpty)
+        precondition(!connection.ready && !connection.messages.isEmpty, "Intermediate route must preserve the transcript")
         connection.receive(snapshot(room))
         precondition(connection.draft == "Keep my draft", "Navigation must preserve per-room drafts")
         connection.pendingToken = "pending-fixture"
         connection.reload()
-        precondition(connection.pendingToken != nil && connection.showConnection)
+        precondition(connection.pendingToken != nil && connection.deliveryUncertain && !connection.showConnection)
         connection.receive(snapshot(room, acknowledgement: "different-token"))
         precondition(connection.pendingToken != nil)
         connection.receive(snapshot(room, acknowledgement: "pending-fixture"))
         precondition(connection.pendingToken == nil)
+        connection.deliveryUncertain = true; connection.pendingToken = "pending-fixture"
+        connection.draft = "Must not duplicate"
+        precondition(!connection.canSend, "An uncertain delivery must block duplicate sends")
+        connection.receive(snapshot(room, acknowledgement: "pending-fixture"))
+        precondition(!connection.deliveryUncertain)
+        connection.ready = false
+        let recoveryStart = Date()
+        connection.recovery.begin(now: recoveryStart)
+        connection.voiceConnected = true
+        connection.recovery.tick(now: recoveryStart.addingTimeInterval(100))
+        precondition(connection.recovery.attempts == 0, "Recovery must not interrupt a call")
+        connection.voiceConnected = false; connection.pendingToken = "uncertain"
+        connection.recovery.tick(now: recoveryStart.addingTimeInterval(100))
+        precondition(connection.recovery.attempts == 0, "Recovery must not repeat uncertain delivery")
+        connection.pendingToken = nil; connection.recovery.cancel()
+        connection.receive(snapshot(room))
         connection.voiceConnected = true
         let panel = UUID()
         connection.panelAppeared(panel)
@@ -70,6 +99,12 @@ struct ConnectionChecks {
         connection.receiveVoice(DotVoiceSnapshot(connected: true, level: 0, meterAvailable: true, muted: false))
         precondition(!connection.microphoneMuted, "Unmuting must clear the native warning")
         connection.voiceConnected = false
+        connection.showGlassConversation()
+        let savedDraft = connection.draft
+        let savedMessages = connection.messages
+        connection.webViewWebContentProcessDidTerminate(connection.webView)
+        precondition(!connection.showConnection && connection.messages == savedMessages && connection.draft == savedDraft, "WebKit crash must preserve glass, transcript and draft")
+        connection.recovery.cancel()
         print("Connection checks passed: setup, call guard, origin, drafts, pending delivery, reconnect, stale voice, bounded meter")
     }
 }

@@ -8,10 +8,13 @@ enum DotPageAdapter {
       if (location.origin !== 'https://chatgpt.com' || window.__dotGlass) return;
       let pending = null, last = '', timer = null, nextID = 0;
       const rowIDs = new WeakMap();
-      const visible = el => el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-      const room = () => /^\/dots\/[A-Za-z0-9-]+\/?$/.test(location.pathname) ? location.origin + location.pathname.replace(/\/$/, '') : '';
-      const root = () => document.querySelector('.messaging-root') || document.querySelector('main');
-      const editor = () => root()?.querySelector('.composer-wrap [contenteditable="true"], .composer-wrap textarea, [contenteditable="true"][role="textbox"], #prompt-textarea, textarea[placeholder]');
+      const visible = el => !!(el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
+      const room = () => /^\/dots\/(?:home|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/?$/.test(location.pathname) ? location.origin + location.pathname.replace(/\/$/, '') : '';
+      const root = () => document.querySelector('.messaging-root') || document.querySelector('main') || document.body;
+      const editorSelector = '.composer-wrap [contenteditable="true"], .composer-wrap textarea, [contenteditable="true"][role="textbox"], #prompt-textarea, .ProseMirror[contenteditable="true"], textarea[placeholder]';
+      // The current Dot composer can be a portal outside main. Select a visible
+      // message editor rather than a hidden legacy editor earlier in the DOM.
+      const editor = () => Array.from(document.querySelectorAll(editorSelector)).find(visible);
       const messageSelector = '.message-row, [data-message-author-role="user"], [data-message-author-role="assistant"], [data-author-role="user"], [data-author-role="assistant"]';
       const receiptSelector = '[data-read], [data-read-receipt], [data-read-state], [data-message-read-status], [data-message-status], [data-delivery-status], [data-status], [data-state], [data-testid*="read" i], [data-testid*="receipt" i], .message-meta, [class*="receipt" i], [class*="status" i], [role="status"], [aria-label], [title]';
       const normalize = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -66,11 +69,25 @@ enum DotPageAdapter {
         }
         return null;
       }
+      // Only already-rendered images: no new requests, credentials or external URLs.
+      const thumbnail = row => {
+        const image = row.querySelector('.attachment-card img, .message-bubble img');
+        if (!image?.complete || !image.naturalWidth) return null;
+        try {
+          const canvas = document.createElement('canvas');
+          const scale = Math.min(1, 320 / image.naturalWidth, 220 / image.naturalHeight);
+          canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+          canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+          const data = canvas.toDataURL('image/png');
+          return data.length <= 180000 ? data : null;
+        } catch (_) { return null; } // Cross-origin images stay in the browser.
+      };
       const readRows = () => {
         const scope = root();
         let rows = Array.from(scope?.querySelectorAll('.message-row') || []);
         if (!rows.length) rows = Array.from(scope?.querySelectorAll(messageSelector) || []);
-        return rows.slice(-100).map((row) => {
+        return rows.slice(-100).map((row, index) => {
         let id = row.getAttribute('data-message-id') || row.getAttribute('data-id') || row.id;
         if (!id) { if (!rowIDs.has(row)) rowIDs.set(row, 'row-' + (++nextID)); id = rowIDs.get(row); }
         const parts = row.querySelectorAll('[data-orbit-message-text-part]');
@@ -88,7 +105,7 @@ enum DotPageAdapter {
         const mine = isMine(row);
         // A reply, an outgoing bubble, or typing state alone is never a read receipt.
         const receipt = mine ? readReceipt(row) : null;
-        return { readReceipt: receipt, id, text: (text || '').trim().slice(0, 32000), isMine: mine, hasAttachment };
+        return { imagePreview: index >= Math.max(0, Math.min(rows.length, 100) - 3) ? thumbnail(row) : null, readReceipt: receipt, id, text: (text || '').trim().slice(0, 32000), isMine: mine, hasAttachment };
       }).filter(m => m.text || m.hasAttachment);
       };
       function snapshot() {
@@ -102,7 +119,8 @@ enum DotPageAdapter {
         const nameElement = document.querySelector('[aria-label^="Open "][aria-label$="’s profile"]');
         const name = nameElement?.getAttribute('aria-label')?.replace(/^Open /, '').replace(/’s profile$/, '') || (document.title && document.title !== 'ChatGPT' ? document.title.replace(/\s*[-–|]\s*ChatGPT$/, '').trim() : 'Your dot');
         const signedIn = !!document.querySelector('button[aria-label="Open profile menu"], [data-testid="profile-button"], [data-testid="accounts-profile-button"]');
-        return { conversation, name, messages, acknowledgement, signedIn,
+        const diagnostic = !conversation ? 'dot-route-unrecognized' : !editor() ? 'composer-not-found' : !navigator.onLine ? 'offline' : 'ready';
+        return { conversation, name, messages, acknowledgement, signedIn, diagnostic,
           ready: navigator.onLine && !!conversation && visible(editor()),
           typing: !!Array.from(root()?.querySelectorAll('.typing-indicator, .typing-bubble') || []).find(n => visible(n) && n.getAttribute('data-visible') === 'true'),
           mediaPlaying: Array.from(document.querySelectorAll('audio,video')).some(m => !m.paused && !m.ended && !m.muted && m.volume > 0 && m.readyState >= 2)
@@ -135,8 +153,9 @@ enum DotPageAdapter {
         }
         for (let attempt=0; attempt<20; attempt++) {
           if (room() !== expectedRoom) return 'room-changed';
-          const scope = input.closest('.composer-wrap') || root();
-          const button = scope?.querySelector('button[aria-label="Send"], button[aria-label="Send message"], button[data-testid="send-button"]');
+          const scope = input.closest('.composer-wrap, form, [data-testid="composer"]') || input.parentElement;
+          const sendSelector = 'button[aria-label="Send"], button[aria-label="Send message"], button[data-testid="send-button"]';
+          const button = Array.from(scope?.querySelectorAll(sendSelector) || []).find(visible) || Array.from(document.querySelectorAll(sendSelector)).find(visible);
           if (visible(button) && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
             pending = {room: conversation, text, token, before:new Set(readRows().map(m => m.id))};
             button.click(); schedule(); return 'submitted';

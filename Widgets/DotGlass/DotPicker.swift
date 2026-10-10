@@ -34,7 +34,7 @@ struct DotPicker: View {
                 Text("Finish the call or pending message before switching Dots.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Button("Choose in ChatGPT") { connection.showConnection = true; dismiss() }
+            Button("Connect your ChatGPT account") { connection.beginSetup(); dismiss() }
                 .buttonStyle(.borderedProminent)
 
         }.padding(24).frame(width: 380)

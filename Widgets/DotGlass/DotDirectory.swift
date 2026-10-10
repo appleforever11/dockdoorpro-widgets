@@ -11,7 +11,9 @@ struct DotDirectory: Codable {
     var profiles: [DotProfile] = []
 
     mutating func remember(url raw: String, name: String) {
-        guard let url = DotURLPolicy.conversation(raw)?.absoluteString else { return }
+        guard let canonical = DotURLPolicy.conversation(raw), canonical.path != "/dots/home" else { return }
+        // Home is the account’s current Dot route, not a second bookmark.
+        let url = canonical.absoluteString
         let label = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
         guard !label.isEmpty else { return }
         if let index = profiles.firstIndex(where: { $0.url == url }) {

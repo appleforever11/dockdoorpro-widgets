@@ -46,9 +46,24 @@ final class DotConnection: NSObject {
     var showTour = false
     private var openedDotAfterLogin = false
     private var completingSetup = false
+    private var automaticHandoff = true
+    @ObservationIgnored lazy var recovery = DotRecovery(connection: self)
+    var deliveryUncertain = false
+    var connectionState: DotConnectionState {
+        if needsSetup { return .setup }
+        if showConnection { return ready ? .ready : .authentication }
+        if deliveryUncertain { return .deliveryAttention }
+        if ready { return .ready }
+        if loading { return recovery.attempts > 0 ? .reconnecting : .connecting }
+        return .paused
+    }
+
+    func inspectConnection() { automaticHandoff = false; showConnection = true }
+    func showGlassConversation() { automaticHandoff = true; showConnection = false }
     private var requestedSignIn = false
     var voiceStarting = false
     private var voiceEnding = false
+    @ObservationIgnored private var callGeneration = UUID()
     private var voiceTimeout: Task<Void, Never>?
     private var visiblePanels = Set<UUID>()
     var voiceConnected = false
@@ -105,6 +120,7 @@ final class DotConnection: NSObject {
     /// while connected. Hidden-panel transcript sampling is bounded to three seconds
     /// and only runs when the host renders the dock timeline.
     func tick() {
+        recovery.tick()
         guard !conversation.isEmpty || !visiblePanels.isEmpty || voiceStarting || voiceConnected else { return }
         guard !tickInFlight, Date().timeIntervalSince(lastTick) >= 0.24,
               webView.url?.host == "chatgpt.com" else { return }
@@ -138,10 +154,11 @@ final class DotConnection: NSObject {
     }
 
     var lastReply: DotMessage? { messages.last(where: { !$0.isMine && !$0.text.isEmpty }) }
-    var canSend: Bool { ready && pendingToken == nil && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.utf16.count <= 12000 }
+    var canSend: Bool { ready && !deliveryUncertain && pendingToken == nil && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.utf16.count <= 12000 }
 
     func connect() {
         guard webView.url == nil else { return }
+        _ = recovery
         loadSaved()
     }
 
@@ -152,27 +169,32 @@ final class DotConnection: NSObject {
             return
         }
         ready = false; loading = true; notice = nil
-        completingSetup = true
+        completingSetup = true; automaticHandoff = true
         showConnection = false
+        recovery.begin()
         webView.load(URLRequest(url: url))
     }
 
     func beginSetup() {
+        guard !voiceConnected && !voiceStarting && pendingToken == nil else { notice = "End your call or check message delivery before signing in again."; return }
+        ready = false
         openedDotAfterLogin = false
-        needsSetup = false; completingSetup = true; requestedSignIn = true
+        needsSetup = false; completingSetup = true; automaticHandoff = true; requestedSignIn = true
         showConnection = true; loading = true; notice = nil
+        recovery.begin()
         webView.load(URLRequest(url: DotURLPolicy.home))
     }
 
     func finishTour() {
         defaults.set(true, forKey: "dot-glass.tourComplete")
         showTour = false
-        if !ready { showConnection = true; notice = "Open Your Dot to finish connecting your conversation." }
+        if !ready { notice = "Your Dot is still connecting. You can stay here while we reconnect."; recovery.begin() }
     }
 
     func cancelSetup() {
         stopAudio()
         requestedSignIn = false; completingSetup = false
+        recovery.cancel()
         webView.stopLoading(); loading = false; showConnection = false; needsSetup = true
     }
 
@@ -190,14 +212,17 @@ final class DotConnection: NSObject {
             notice = "End your call before reconnecting."
             return
         }
-        if webView.url == nil { beginSetup(); return }
         guard pendingToken == nil else {
             notice = "Check the conversation before reconnecting; your last message may have been sent."
-            showConnection = true
+            deliveryUncertain = true; showConnection = false
             return
         }
+        if webView.url == nil && conversation.isEmpty { beginSetup(); return }
+        automaticHandoff = true
         hydrated = false; unreadState.reset(); unreadCount = 0; ready = false; loading = true; notice = nil
-        webView.reload()
+        recovery.begin()
+        showConnection = false
+        webView.load(URLRequest(url: DotURLPolicy.conversation(conversation) ?? DotURLPolicy.dotHome))
     }
 
     var canSwitchDot: Bool { pendingToken == nil && !voiceConnected && !voiceStarting && !loading }
@@ -210,6 +235,7 @@ final class DotConnection: NSObject {
         ready = false; loading = true; typing = false; messages = []; notice = nil
         name = profile.name; draft = drafts[url.absoluteString] ?? ""
         showConnection = false
+        recovery.begin()
         webView.load(URLRequest(url: url))
     }
 
@@ -224,7 +250,14 @@ final class DotConnection: NSObject {
         if let data = try? JSONEncoder().encode(directory) { defaults.set(data, forKey: "dot-glass.directory") }
     }
 
+    @ObservationIgnored private var lastConnectionDiagnostic = ""
     func receive(_ snapshot: DotSnapshot) {
+        let reason = snapshot.diagnostic ?? "adapter-snapshot"
+        if ["dot-route-unrecognized", "composer-not-found", "offline", "ready", "adapter-snapshot"].contains(reason), reason != lastConnectionDiagnostic {
+            lastConnectionDiagnostic = reason
+            callLog.notice("Connection route: canonical=\(DotURLPolicy.conversation(snapshot.conversation) != nil) home=\(URL(string: snapshot.conversation)?.path == "/dots/home") setup=\(self.completingSetup) automatic=\(self.automaticHandoff)")
+            callLog.notice("Connection adapter: \(reason, privacy: .public); rows=\(snapshot.messages.count) ready=\(snapshot.ready)")
+        }
         guard snapshot.messages.count <= 100 else { return }
         if completingSetup && snapshot.signedIn == true && !openedDotAfterLogin && DotURLPolicy.conversation(snapshot.conversation) == nil {
             openedDotAfterLogin = true; requestedSignIn = false
@@ -235,17 +268,18 @@ final class DotConnection: NSObject {
         }
         let incoming = DotURLPolicy.conversation(snapshot.conversation)?.absoluteString ?? ""
         if let targetConversation, incoming != targetConversation { return }
-        if incoming != conversation {
+        if !incoming.isEmpty && incoming != conversation {
             if targetConversation == nil { drafts[conversation] = draft; draft = drafts[incoming] ?? "" }
             targetConversation = nil
             hydrated = false; seen.removeAll(); unreadState.reset(); unreadCount = 0
             if pendingToken != nil { notice = "The conversation changed. Check delivery before sending again." }
-            pendingToken = nil; timeout?.cancel()
+            pendingToken = nil; timeout?.cancel(); deliveryUncertain = false
             conversation = incoming
         }
         guard !incoming.isEmpty else {
-            ready = false; messages = []; typing = false; mediaPlaying = false
-            if !needsSetup && !showTour { showConnection = true; openSignInIfNeeded() }
+            ready = false; typing = false; mediaPlaying = false
+            recovery.beginIfNeeded()
+            if requestedSignIn { openSignInIfNeeded() }
             return
         }
         if defaults.string(forKey: "dot-glass.conversationURL") != incoming {
@@ -255,9 +289,10 @@ final class DotConnection: NSObject {
         directory.remember(url: incoming, name: snapshot.name)
         if directory.profiles != previousProfiles { saveDirectory() }
         name = directory.profiles.first(where: { $0.url == incoming })?.name ?? String(snapshot.name.prefix(80))
-        ready = snapshot.ready; loading = false
-        if ready && completingSetup {
-            showTour = !defaults.bool(forKey: "dot-glass.tourComplete")
+        ready = snapshot.ready; loading = !snapshot.ready
+        if ready { recovery.succeeded() } else { recovery.beginIfNeeded() }
+        if ready && (completingSetup || automaticHandoff) && pendingToken == nil {
+            if completingSetup { showTour = !defaults.bool(forKey: "dot-glass.tourComplete") }
             defaults.set(true, forKey: "dot-glass.onboardingComplete")
             requestedSignIn = false; completingSetup = false; needsSetup = false; showConnection = false
         }
@@ -283,7 +318,7 @@ final class DotConnection: NSObject {
         if reading { notifications.clear() }
         else if newReplies > 0 { notifications.notify() }
         if let token = pendingToken, snapshot.acknowledgement == token {
-            pendingToken = nil; timeout?.cancel()
+            pendingToken = nil; timeout?.cancel(); deliveryUncertain = false
             if draft == submittedDraft { draft = "" }
             submittedDraft = nil; notice = nil
         }
@@ -295,14 +330,14 @@ final class DotConnection: NSObject {
     func send() {
         guard canSend else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines), token = UUID().uuidString
-        pendingToken = token; submittedDraft = draft; notice = nil
+        pendingToken = token; submittedDraft = draft; notice = nil; deliveryUncertain = false
         let expected = conversation
         timeout?.cancel()
         timeout = Task { [weak self] in
             try? await Task.sleep(for: .seconds(15))
             guard !Task.isCancelled, let self, self.pendingToken == token else { return }
-            self.notice = "Delivery isn’t confirmed yet. Open the conversation to check before retrying."
-            self.showConnection = true
+            self.notice = "Delivery is not confirmed yet. We will not send it again automatically."
+            self.deliveryUncertain = true; self.showConnection = false
             // Keep send disabled to prevent duplicate messages after an ambiguous outcome.
         }
         webView.callAsyncJavaScript("return await window.__dotGlass?.send(text, token, room) ?? 'not-ready';",
@@ -316,18 +351,21 @@ final class DotConnection: NSObject {
                    ["not-ready", "existing-draft", "invalid", "room-changed", "send-unavailable", "editor-unavailable"].contains(status) {
                     self.pendingToken = nil
                 }
-                self.notice = "The message needs attention in the connection view. Your draft is preserved."
-                self.showConnection = true
+                self.notice = "Your message could not be confirmed. Your draft is preserved; reconnect or check delivery in your browser."
+                self.deliveryUncertain = true; self.showConnection = false
             }
         }
     }
 
     func confirmDeliveryChecked() {
-        pendingToken = nil; timeout?.cancel(); submittedDraft = nil; notice = nil
+        pendingToken = nil; timeout?.cancel(); submittedDraft = nil; notice = nil; deliveryUncertain = false
         // Reload also resets the browser adapter's pending token; user reviewed delivery first.
         reload()
     }
 
+    func openMicrophoneSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") { NSWorkspace.shared.open(url) }
+    }
     func openBrowser() { NSWorkspace.shared.open(DotURLPolicy.conversation(conversation) ?? DotURLPolicy.home) }
     func startCall() {
         guard ready, !loading, pendingToken == nil else {
@@ -338,12 +376,20 @@ final class DotConnection: NSObject {
         observedInboundAudio = false; lastCaptureState = nil
         callLog.notice("Call requested")
         voiceEnding = false; voiceStarting = true; showConnection = false; notice = nil
+        callGeneration = UUID(); let generation = callGeneration
+        voiceTimeout = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(20))
+                    guard !Task.isCancelled, let self, self.voiceStarting, self.callGeneration == generation else { return }
+                    self.callLog.notice("Call connection timed out")
+                    self.stopAudio()
+                    self.notice = "The call didn’t connect. Check microphone access and try again."
+                }
         webView.callAsyncJavaScript("return window.__dotGlass?.startCall(room) ?? 'not-ready';",
             arguments: ["room": conversation], in: nil, in: .page) { [weak self] result in
             Task { @MainActor in
-                guard let self, self.voiceStarting else { return }
+                guard let self, self.voiceStarting, self.callGeneration == generation else { return }
                 guard case .success(let value) = result, value as? String == "started" else {
-                    self.voiceStarting = false
+                    self.voiceTimeout?.cancel(); self.voiceStarting = false
                     if case .success(let value) = result, let status = value as? String,
                        ["not-ready", "pending", "call-unavailable"].contains(status) {
                         self.callLog.notice("Call control status: \(status, privacy: .public)")
@@ -353,13 +399,7 @@ final class DotConnection: NSObject {
                     self.notice = "The call couldn’t start. Reconnect your Dot, then try again."
                     return
                 }
-                self.voiceTimeout = Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(20))
-                    guard !Task.isCancelled, let self, self.voiceStarting else { return }
-                    self.callLog.notice("Call connection timed out")
-                    self.stopAudio()
-                    self.notice = "The call didn’t connect. Check microphone access and try again."
-                }
+
             }
         }
     }
@@ -377,7 +417,7 @@ final class DotConnection: NSObject {
                     self.notice = nil
                     self.webView.callAsyncJavaScript("await window.__dotGlassVoice?.sample();", arguments: [:], in: nil, in: .page, completionHandler: nil)
                 } else {
-                    self.notice = "Open the connection view to change ChatGPT’s microphone control."
+                    self.notice = "The microphone control did not respond. Try again, or end the call and check microphone access."
                 }
             }
         }
@@ -399,6 +439,7 @@ final class DotConnection: NSObject {
 
     func stopAudio() {
         callLog.notice("Stopping call: starting=\(self.voiceStarting) connected=\(self.voiceConnected)")
+        callGeneration = UUID()
         voiceEnding = true
         let wasStarting = voiceStarting
         voiceTimeout?.cancel(); voiceStarting = false
@@ -443,6 +484,10 @@ final class DotScriptHandler: NSObject, WKScriptMessageHandler {
               [0, 443].contains(message.frameInfo.securityOrigin.port),
               JSONSerialization.isValidJSONObject(message.body),
               let data = try? JSONSerialization.data(withJSONObject: message.body), data.count <= 4_000_000 else { return }
+        // Reject queued transcript events from a previous route after navigation.
+        if let payload = message.body as? [String: Any], let room = payload["conversation"] as? String,
+           let current = owner?.webView.url, let expected = DotURLPolicy.conversation(current.absoluteString),
+           let incoming = DotURLPolicy.conversation(room), incoming != expected { return }
         if let voice = try? JSONDecoder().decode(DotVoiceSnapshot.self, from: data) {
             Task { @MainActor [weak self] in self?.owner?.receiveVoice(voice) }
         } else if let snapshot = try? JSONDecoder().decode(DotSnapshot.self, from: data) {

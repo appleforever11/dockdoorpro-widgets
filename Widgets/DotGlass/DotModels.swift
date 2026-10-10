@@ -6,6 +6,7 @@ struct DotMessage: Identifiable, Codable, Equatable {
     let isMine: Bool
     let hasAttachment: Bool
     var readReceipt: String? = nil
+    var imagePreview: String? = nil
 }
 
 struct DotSnapshot: Decodable {
@@ -17,6 +18,7 @@ struct DotSnapshot: Decodable {
     let mediaPlaying: Bool
     let messages: [DotMessage]
     let acknowledgement: String?
+    var diagnostic: String? = nil
 }
 
 enum DotPhase: String {
@@ -37,9 +39,10 @@ enum DotURLPolicy {
         guard let value, let url = URL(string: value), url.scheme == "https",
               url.host == "chatgpt.com", url.user == nil, url.password == nil,
               url.port == nil || url.port == 443,
-              url.path.range(of: "^/dots/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/?$", options: .regularExpression) != nil
+              (url.path == "/dots/home" || url.path == "/dots/home/" || url.path.range(of: "^/dots/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/?$", options: .regularExpression) != nil)
         else { return nil }
         var parts = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        if let path = parts?.path, path.hasSuffix("/") { parts?.path = String(path.dropLast()) }
         parts?.query = nil
         parts?.fragment = nil
         return parts?.url
