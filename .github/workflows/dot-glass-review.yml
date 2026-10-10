@@ -1,5 +1,12 @@
 name: Dot Glass Review Checks
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "Widgets/DotGlass/**"
+      - "tests/dot-glass/**"
+      - "scripts/test-dot-glass.sh"
+      - ".github/workflows/dot-glass-review.yml"
   workflow_dispatch:
 permissions:
   contents: read
