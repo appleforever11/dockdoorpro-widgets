@@ -24,7 +24,7 @@ struct DotOnboarding: View {
                     Button("Connect ChatGPT", action: connection.beginSetup)
                         .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.large)
                     Button("See how it works") { connection.showTour = true }.buttonStyle(.plain)
-                    Text("Requires access to ChatGPT Dots. Email sign-in opens here. Some provider sign-in flows, especially Google, may reject embedded browsers or require a popup; if sign-in stalls, use ChatGPT in your browser. Microphone permission is requested only when you start a call.")
+                    Text("Requires access to ChatGPT Dots. Sign in here with a method your account supports. If a provider refuses to open here, go back and try another method. Signing in through a separate browser will not connect this widget. Microphone permission is requested only when you start a call.")
                         .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)

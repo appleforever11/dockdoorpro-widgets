@@ -19,13 +19,13 @@ struct DotPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if showDotPicker {
-                DotPicker(connection: connection) { showDotPicker = false }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if connection.showTour {
+            if connection.showTour {
                 DotTour(connection: connection)
             } else if connection.needsSetup {
                 DotOnboarding(connection: connection)
+            } else if showDotPicker {
+                DotPicker(connection: connection) { showDotPicker = false }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
             ZStack {
                 DotWebSession(connection: connection)
@@ -47,6 +47,9 @@ struct DotPanel: View {
             selectedTheme = DotTheme.current
             glassOpacity = WidgetDefaults.double(key: "glassOpacity", widgetId: "dot-glass", default: 0.68)
             connection.panelAppeared(panelIdentity)
+        }
+        .onChange(of: connection.needsSetup) { _, needsSetup in
+            if needsSetup { showDotPicker = false }
         }
         .onDisappear { connection.panelDisappeared(panelIdentity) }
     }
