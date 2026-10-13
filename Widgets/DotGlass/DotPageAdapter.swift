@@ -94,7 +94,9 @@ enum DotPageAdapter {
       const setActive = value => {
         active = value; observer.disconnect(); clearTimeout(timer); timer = null;
         if (active) {
-          observer.observe(root(), {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['disabled','data-visible','aria-busy','data-message-author-role','data-author-role']});
+          // ChatGPT can replace the Dot transcript root after the initial
+          // signed-in snapshot. Observe its stable body so the new root is read.
+          observer.observe(document.body, {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['disabled','data-visible','aria-busy','data-message-author-role','data-author-role']});
           publish();
         }
       };

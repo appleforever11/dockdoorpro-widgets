@@ -154,9 +154,9 @@ struct DotPanel: View {
         VStack(spacing: 12) {
             Text(connection.loading ? "Bringing your Dot closer…" : "A little space for your Dot.")
                 .font(.headline)
-            Text(connection.loading ? "Your conversation will appear here. You can keep writing while we reconnect." : "Reconnect your Dot to continue chatting.")
+            Text(connection.loading ? "Your conversation will appear here. You can keep writing while we reconnect." : connection.ready ? "Send a message to begin your conversation." : "Reconnect your Dot to continue chatting.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            if !connection.loading {
+            if !connection.loading && !connection.ready {
                 Button("Reconnect") { connection.recovery.cancel(); connection.reload() }
                     .buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
             }
