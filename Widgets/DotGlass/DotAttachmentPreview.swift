@@ -14,17 +14,10 @@ struct DotAttachmentPreview: View {
     }
     var body: some View {
         if let image {
-            Button { enlarged = true } label: {
-                Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 240, maxHeight: 150)
+            Button { enlarged.toggle() } label: {
+                Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: enlarged ? 360 : 240, maxHeight: enlarged ? 260 : 150)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-            }.buttonStyle(.plain).accessibilityLabel("View image preview")
-                .sheet(isPresented: $enlarged) {
-                    VStack(spacing: 16) {
-                        Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 480, maxHeight: 360)
-                        Text("Image preview · open the attachment in your browser for the original").font(.caption).foregroundStyle(.secondary)
-                        Button("Done") { enlarged = false }.keyboardShortcut(.cancelAction)
-                    }.padding(24)
-                }
+            }.buttonStyle(.plain).accessibilityLabel(enlarged ? "Shrink image preview" : "Enlarge image preview")
         }
     }
 }

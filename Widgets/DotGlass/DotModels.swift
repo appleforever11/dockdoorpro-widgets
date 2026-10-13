@@ -5,7 +5,6 @@ struct DotMessage: Identifiable, Codable, Equatable {
     let text: String
     let isMine: Bool
     let hasAttachment: Bool
-    var readReceipt: String? = nil
     var imagePreview: String? = nil
 }
 

@@ -81,10 +81,6 @@ struct DotTranscript: View {
             .accessibilityLabel("\(message.isMine ? "You" : connection.name): \(message.text)")
             if !message.isMine { Spacer(minLength: 30) }
         }
-        if message.isMine {
-            Text(message.readReceipt ?? "Sent").font(.caption2).foregroundStyle(.secondary)
-                .padding(.trailing, 4).accessibilityLabel(message.readReceipt ?? "Sent")
-        }
         }
     }
 }

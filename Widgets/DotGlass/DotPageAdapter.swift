@@ -16,63 +16,18 @@ enum DotPageAdapter {
       // message editor rather than a hidden legacy editor earlier in the DOM.
       const editor = () => Array.from(document.querySelectorAll(editorSelector)).find(visible);
       const messageSelector = '.message-row, [data-message-author-role="user"], [data-message-author-role="assistant"], [data-author-role="user"], [data-author-role="assistant"]';
-      const receiptSelector = '[data-read], [data-read-receipt], [data-read-state], [data-message-read-status], [data-message-status], [data-delivery-status], [data-status], [data-state], [data-testid*="read" i], [data-testid*="receipt" i], .message-meta, [class*="receipt" i], [class*="status" i], [role="status"], [aria-label], [title]';
       const normalize = s => (s || '').replace(/\s+/g, ' ').trim();
-      const readLabel = value => {
-        const label = normalize(value);
-        if (/^Read(?:$|\s+(?:by|at|on)\b|\s+\d|\s*[·•])/i.test(label)) return label;
-        if (/^Seen(?:$|\s+(?:by|at|on)\b|\s+\d|\s*[·•])/i.test(label)) return label.replace(/^Seen/i, 'Read');
-        return null;
-      };
       const isMine = row => row.classList.contains('self') || row.classList.contains('user') ||
         ['user', 'human', 'self'].includes((row.getAttribute('data-message-author-role') || row.getAttribute('data-author-role') || row.getAttribute('data-author') || '').toLowerCase()) ||
         row.getAttribute('data-is-user') === 'true';
-      function receiptIn(container, includeContainer = false) {
-        if (!container) return null;
-        const nodes = includeContainer && container.matches(receiptSelector) ? [container] : [];
-        nodes.push(...Array.from(container.querySelectorAll(receiptSelector)));
-        for (const node of nodes) {
-          if (!visible(node)) continue;
-          const label = [node.innerText, node.getAttribute('aria-label'), node.getAttribute('title'), node.getAttribute('data-read-receipt')]
-            .map(readLabel).find(Boolean);
-          if (label) return label.slice(0, 100);
-          const markers = [
-            ['data-read', node.getAttribute('data-read')],
-            ['data-read-receipt', node.getAttribute('data-read-receipt')],
-            ['data-read-state', node.getAttribute('data-read-state')],
-            ['data-message-read-status', node.getAttribute('data-message-read-status')],
-            ['data-message-status', node.getAttribute('data-message-status')],
-            ['data-delivery-status', node.getAttribute('data-delivery-status')],
-            ['data-status', node.getAttribute('data-status')],
-            ['data-state', node.getAttribute('data-state')]
-          ].filter(([, value]) => value !== null).map(([name, value]) => [name, normalize(value).toLowerCase()]);
-          const negative = markers.some(([, value]) => ['false', 'unread', 'unseen', 'unreaded', 'pending', 'sent', 'delivered'].includes(value));
-          const positive = markers.some(([name, value]) => ['read', 'seen'].includes(value) ||
-            (['data-read', 'data-read-receipt', 'data-read-state', 'data-message-read-status'].includes(name) && ['true', '1'].includes(value)));
-          const semantic = node.matches('[data-testid*="read-receipt" i], [data-testid*="message-read-status" i], [class*="read-receipt" i], [class*="message-receipt" i], [data-read-receipt]');
-          if (!negative && (semantic || positive)) return 'Read';
-        }
-        return null;
-      }
-      function readReceipt(row) {
-        // Status metadata may be attached to the outgoing row itself.
-        const direct = receiptIn(row, true);
-        if (direct) return direct;
-        // ChatGPT may render the receipt beside the outgoing bubble instead of inside it.
-        let sibling = row.nextElementSibling;
-        for (let step = 0; sibling && step < 2; step++, sibling = sibling.nextElementSibling) {
-          if (sibling.matches(messageSelector) || sibling.querySelector(messageSelector)) break;
-          const nested = receiptIn(sibling, true);
-          if (nested) return nested;
-          const plainStatus = readLabel(sibling.innerText);
-          if (visible(sibling) && plainStatus) return plainStatus.slice(0, 100);
-        }
-        return null;
-      }
+      const imageCache = new WeakMap();
       // Only already-rendered images: no new requests, credentials or external URLs.
       const thumbnail = row => {
         const image = row.querySelector('.attachment-card img, .message-bubble img');
         if (!image?.complete || !image.naturalWidth) return null;
+        const cached = imageCache.get(image);
+        const key = image.currentSrc + ':' + image.naturalWidth + 'x' + image.naturalHeight;
+        if (cached?.key === key) return cached.data;
         try {
           const canvas = document.createElement('canvas');
           const scale = Math.min(1, 320 / image.naturalWidth, 220 / image.naturalHeight);
@@ -80,7 +35,9 @@ enum DotPageAdapter {
           canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
           canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
           const data = canvas.toDataURL('image/png');
-          return data.length <= 180000 ? data : null;
+          const safe = data.length <= 180000 ? data : null;
+          imageCache.set(image, {key, data: safe});
+          return safe;
         } catch (_) { return null; } // Cross-origin images stay in the browser.
       };
       const readRows = () => {
@@ -103,9 +60,7 @@ enum DotPageAdapter {
         }
         const hasAttachment = !!row.querySelector('img, video, [data-orbit-message-writing-block], .attachment-card, [data-mcp-confirmation-chip]');
         const mine = isMine(row);
-        // A reply, an outgoing bubble, or typing state alone is never a read receipt.
-        const receipt = mine ? readReceipt(row) : null;
-        return { imagePreview: index >= Math.max(0, Math.min(rows.length, 100) - 3) ? thumbnail(row) : null, readReceipt: receipt, id, text: (text || '').trim().slice(0, 32000), isMine: mine, hasAttachment };
+        return { imagePreview: index >= Math.max(0, Math.min(rows.length, 100) - 3) ? thumbnail(row) : null, id, text: (text || '').trim().slice(0, 32000), isMine: mine, hasAttachment };
       }).filter(m => m.text || m.hasAttachment);
       };
       function snapshot() {
@@ -133,9 +88,16 @@ enum DotPageAdapter {
           if (encoded !== last) { last = encoded; window.webkit?.messageHandlers.dotGlass.postMessage(value); }
         } catch (_) { /* No page text or account details are logged. */ }
       }
-      function schedule() { if (timer) return; timer = setTimeout(() => { timer = null; publish(); }, 180); }
+      function schedule() { if (!active || timer) return; timer = setTimeout(() => { timer = null; publish(); }, 800); }
+      let active = false;
       const observer = new MutationObserver(schedule);
-      observer.observe(document.documentElement, {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['disabled','data-visible','aria-busy','aria-hidden','data-read','data-read-receipt','data-read-state','data-message-read-status','data-message-status','data-delivery-status','aria-label','title','class','style','data-testid','data-state','data-status','data-message-author-role','data-author-role','data-is-user']});
+      const setActive = value => {
+        active = value; observer.disconnect(); clearTimeout(timer); timer = null;
+        if (active) {
+          observer.observe(root(), {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['disabled','data-visible','aria-busy','data-message-author-role','data-author-role']});
+          publish();
+        }
+      };
 
       const send = async (text, token, expectedRoom) => {
         const conversation = room(), input = editor();
@@ -203,11 +165,21 @@ enum DotPageAdapter {
         if (!button) return false;
         signInClicked = true; button.click(); return true;
       };
-      window.__dotGlass = {send, startCall, setMuted, openSignIn, resetCall: () => { callRequested = false; }, refresh:publish};
+      const endCall = expectedRoom => {
+        if (room() !== expectedRoom) return false;
+        const labels = new Set(['end call', 'leave call', 'hang up']);
+        const button = Array.from(document.querySelectorAll('button, [role="button"]')).find(el =>
+          visible(el) && !el.closest('.message-row') && [el.getAttribute('aria-label'), el.getAttribute('title'), el.innerText]
+            .some(label => label && labels.has(normalize(label).toLowerCase())));
+        if (!button) return false;
+        button.click(); callRequested = false; return true;
+      };
+      window.__dotGlass = {send, startCall, endCall, setMuted, openSignIn, setActive, resetCall: () => { callRequested = false; }, refresh:publish};
       window.addEventListener('pagehide', () => {observer.disconnect();  clearTimeout(timer);});
-      window.addEventListener('online', schedule); window.addEventListener('offline', schedule);
-      document.addEventListener('play', schedule, true); document.addEventListener('pause', schedule, true);
-      publish();
+      window.addEventListener('online', () => { if (active) schedule(); });
+      window.addEventListener('offline', () => { if (active) schedule(); });
+      document.addEventListener('play', () => { if (active) schedule(); }, true);
+      document.addEventListener('pause', () => { if (active) schedule(); }, true);
     })();
     """#
 }

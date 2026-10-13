@@ -28,7 +28,7 @@ final class DotRecovery {
                 guard let self, let connection = self.connection,
                       !connection.voiceConnected, !connection.voiceStarting,
                       connection.pendingToken == nil, !connection.needsSetup,
-                      !connection.showConnection else { return }
+                      !connection.showConnection, connection.isPanelVisible else { return }
                 self.attempts = 0
                 connection.reload()
             }

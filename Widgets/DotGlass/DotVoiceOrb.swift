@@ -39,9 +39,9 @@ struct DotVoiceOrb: NSViewRepresentable {
         context.coordinator.level = Float(audioLevel.isFinite ? max(0, min(1, audioLevel)) : 0)
         context.coordinator.configuration = configuration
         context.coordinator.reduced = reduced
-        view.reduced = reduced
-        view.isPaused = reduced || view.window == nil
-        if reduced { view.draw() }
+        view.shouldAnimate = !reduced && state != .idle
+        view.isPaused = !view.shouldAnimate || view.window == nil
+        if view.isPaused { view.draw() }
     }
     static func dismantleNSView(_ view: VoiceOrbMetalView, coordinator: VoiceOrbRenderer) {
         view.isPaused = true; view.delegate = nil
@@ -49,12 +49,12 @@ struct DotVoiceOrb: NSViewRepresentable {
 }
 
 final class VoiceOrbMetalView: MTKView {
-    var reduced = false
+    var shouldAnimate = false
     override var isOpaque: Bool { false }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        isPaused = reduced || window == nil
-        if reduced { draw() }
+        isPaused = !shouldAnimate || window == nil
+        if isPaused && window != nil { draw() }
     }
 }
 

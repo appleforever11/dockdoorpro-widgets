@@ -10,7 +10,7 @@ struct DotTour: View {
     private var palette: [Color] { (DotTheme(rawValue: themeName) ?? .arctic).colors }
     private let titles = ["Your Dot. A little closer.", "Talk naturally.", "Make it yours.", "Never miss a reply."]
     private let details = [
-        "Write at the bottom to message your real Dot. Confirmed read receipts appear beneath your messages.",
+        "Write at the bottom to message your real Dot. Check the conversation if delivery is uncertain.",
         "The phone button starts a real Dot call. Use the microphone button to mute or unmute. Calls continue when the panel hides; reopen it to end the call.",
         "Preview six themes with the palette button. Save your choice in DockDoor Settings → Stacks → Dot Glass. Your orb, dock preview and chat bubbles stay in sync.",
         "Unread replies add a badge to the dock tile. Turn on optional macOS notifications in the menu. Alerts keep message text private."]

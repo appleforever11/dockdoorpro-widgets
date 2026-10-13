@@ -67,6 +67,8 @@ final class DotConnection: NSObject {
     private var voiceTimeout: Task<Void, Never>?
     private var voiceHeartbeat: Task<Void, Never>?
     private var visiblePanels = Set<UUID>()
+    var isPanelVisible: Bool { !visiblePanels.isEmpty }
+    private var idleUnload: Task<Void, Never>?
     var voiceConnected = false
     var voiceLevel = 0.0
     private var speechActivity = DotSpeechActivity()
@@ -75,6 +77,7 @@ final class DotConnection: NSObject {
     var microphoneMuted = false
     var microphoneChangePending = false
     private(set) var webView: WKWebView!
+    var authPopup: WKWebView?
     private(set) var conversation = ""
     private var timeout: Task<Void, Never>?
     private var hydrated = false
@@ -82,12 +85,14 @@ final class DotConnection: NSObject {
     private var submittedDraft: String?
     private var handler: DotScriptHandler!
     private let defaults: UserDefaults
+    private let websiteDataStore: WKWebsiteDataStore
     var directory = DotDirectory()
     private var drafts: [String: String] = [:]
     var targetConversation: String?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self.websiteDataStore = WKWebsiteDataStore(forIdentifier: UUID(uuidString: "1D9FD40A-8C44-4936-BFAD-08608F59DA71")!)
         super.init()
         notificationsEnabled = defaults.bool(forKey: "dot-glass.notifications")
         if let data = defaults.data(forKey: "dot-glass.directory"),
@@ -96,7 +101,7 @@ final class DotConnection: NSObject {
         }
         let config = WKWebViewConfiguration()
         // Dedicated persistent session: no dependency on Tracker or the prototype's cookies.
-        config.websiteDataStore = WKWebsiteDataStore(forIdentifier: UUID(uuidString: "1D9FD40A-8C44-4936-BFAD-08608F59DA71")!)
+        config.websiteDataStore = websiteDataStore
         config.mediaTypesRequiringUserActionForPlayback = []
         handler = DotScriptHandler(owner: self)
         config.userContentController.add(handler, name: "dotGlass")
@@ -118,11 +123,11 @@ final class DotConnection: NSObject {
     @ObservationIgnored private var tickGeneration = UUID()
     @ObservationIgnored private var lastTranscriptTick = Date.distantPast
 
-    /// Presentation timelines refresh idle sessions; active calls also own a
-    /// cancellable sampling task. Background transcript sampling is bounded to three seconds.
+    /// A slow visible-panel fallback refreshes the transcript; active calls own
+    /// a cancellable audio sampling task. Hidden panels do not read messages.
     func tick() {
+        guard !visiblePanels.isEmpty || voiceStarting || voiceConnected else { return }
         recovery.tick()
-        guard !conversation.isEmpty || !visiblePanels.isEmpty || voiceStarting || voiceConnected else { return }
         if tickInFlight && Date().timeIntervalSince(lastTick) > 5 { tickInFlight = false; tickGeneration = UUID() }
         guard !tickInFlight, Date().timeIntervalSince(lastTick) >= 0.24,
               webView.url?.host == "chatgpt.com" else { return }
@@ -134,13 +139,13 @@ final class DotConnection: NSObject {
             }
         }
         let now = Date()
-        let refreshTranscript = now.timeIntervalSince(lastTranscriptTick) >= (!visiblePanels.isEmpty ? 1.5 : 3)
+        let refreshTranscript = !visiblePanels.isEmpty && now.timeIntervalSince(lastTranscriptTick) >= 15
         guard refreshTranscript || voiceStarting || voiceConnected else { return }
         if textActivityUntil != .distantPast && now >= textActivityUntil { textActivityUntil = .distantPast }
         lastTick = now; tickInFlight = true
         tickGeneration = UUID(); let generation = tickGeneration
         if refreshTranscript { lastTranscriptTick = now }
-        webView.callAsyncJavaScript("if (refreshTranscript) window.__dotGlass?.refresh(); await window.__dotGlassVoice?.sample();", arguments: ["refreshTranscript": refreshTranscript], in: nil, in: .page) { [weak self] _ in
+        webView.callAsyncJavaScript("if (refreshTranscript) window.__dotGlass?.refresh(); if (sampleVoice) await window.__dotGlassVoice?.sample();", arguments: ["refreshTranscript": refreshTranscript, "sampleVoice": voiceStarting || voiceConnected], in: nil, in: .page) { [weak self] _ in
             Task { @MainActor in if self?.tickGeneration == generation { self?.tickInFlight = false } }
         }
     }
@@ -160,7 +165,7 @@ final class DotConnection: NSObject {
     var canSend: Bool { ready && !deliveryUncertain && pendingToken == nil && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.utf16.count <= 12000 }
 
     func connect() {
-        guard webView.url == nil else { return }
+        guard webView.url?.host != "chatgpt.com" else { return }
         _ = recovery
         loadSaved()
     }
@@ -255,6 +260,7 @@ final class DotConnection: NSObject {
 
     @ObservationIgnored private var lastConnectionDiagnostic = ""
     func receive(_ snapshot: DotSnapshot) {
+        guard !needsSetup else { return }
         let reason = snapshot.diagnostic ?? "adapter-snapshot"
         if !showConnection && !snapshot.ready {
             if reason == "sign-in-required" { notice = "Your ChatGPT session expired. Sign in again to reconnect; your draft is safe." }
@@ -311,15 +317,7 @@ final class DotConnection: NSObject {
             textActivityPhase = latest.isMine ? .sending : .thinking
             textActivityUntil = Date().addingTimeInterval(2)
         }
-        let previousReceipts = messages.reduce(into: [String: String]()) { receipts, message in
-            if let receipt = message.readReceipt { receipts[message.id] = receipt }
-        }
-        messages = snapshot.messages.map { message in
-            guard message.readReceipt == nil, let receipt = previousReceipts[message.id] else { return message }
-            var updated = message
-            updated.readReceipt = receipt
-            return updated
-        }
+        messages = snapshot.messages
         let reading = !visiblePanels.isEmpty && transcriptAtBottom && !showConnection && !showTour
         let newReplies = unreadState.update(room: incoming, messages: snapshot.messages,
                                             typing: snapshot.typing, reading: reading)
@@ -442,17 +440,58 @@ final class DotConnection: NSObject {
     }
 
     func panelAppeared(_ identity: UUID) {
+        idleUnload?.cancel(); idleUnload = nil
         visiblePanels.insert(identity)
+        connect()
+        webView.evaluateJavaScript("window.__dotGlass?.setActive(true)", completionHandler: nil)
         if transcriptAtBottom && !showTour && !showConnection { markMessagesRead() }
         callLog.notice("Conversation panel appeared")
     }
 
     func panelDisappeared(_ identity: UUID) {
         visiblePanels.remove(identity)
-        if visiblePanels.isEmpty { transcriptAtBottom = false }
+        if visiblePanels.isEmpty {
+            transcriptAtBottom = false
+            webView.evaluateJavaScript("window.__dotGlass?.setActive(false)", completionHandler: nil)
+            scheduleIdleUnload()
+        }
         // The plugin owns the call. DockDoor may dismiss its panel on focus
         // changes; hiding presentation must never revoke active microphone use.
         callLog.notice("Conversation panel hidden; active call retained")
+    }
+
+    private func scheduleIdleUnload() {
+        idleUnload?.cancel()
+        idleUnload = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(180))
+            guard !Task.isCancelled, let self, self.visiblePanels.isEmpty,
+                  !self.voiceStarting, !self.voiceConnected, self.pendingToken == nil else { return }
+            self.webView.stopLoading()
+            self.webView.loadHTMLString("", baseURL: nil)
+            self.ready = false; self.loading = false; self.typing = false
+        }
+    }
+
+    func signOut() {
+        guard !voiceStarting, !voiceConnected, pendingToken == nil else {
+            notice = "End your call or check message delivery before signing out."
+            return
+        }
+        idleUnload?.cancel(); recovery.cancel()
+        authPopup = nil
+        webView.stopLoading(); webView.loadHTMLString("", baseURL: nil)
+        websiteDataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.defaults.removeObject(forKey: "dot-glass.onboardingComplete")
+                self.defaults.removeObject(forKey: "dot-glass.conversationURL")
+                self.defaults.removeObject(forKey: "dot-glass.directory")
+                self.directory = DotDirectory(); self.conversation = ""; self.messages = []
+                self.unreadState.reset(); self.unreadCount = 0; self.notifications.clear()
+                self.ready = false; self.loading = false; self.needsSetup = true
+                self.showConnection = false; self.showTour = false; self.notice = nil
+            }
+        }
     }
 
     func stopAudio() {
@@ -464,9 +503,18 @@ final class DotConnection: NSObject {
         let hadCapture = webView.microphoneCaptureState != .none
         webView.setMicrophoneCaptureState(.none, completionHandler: nil)
         webView.pauseAllMediaPlayback(completionHandler: nil)
-        if voiceConnected || hadCapture || wasStarting { webView.load(URLRequest(url: DotURLPolicy.conversation(conversation) ?? DotURLPolicy.home)) }
+        if voiceConnected || hadCapture || wasStarting {
+            webView.callAsyncJavaScript("return window.__dotGlass?.endCall(room) ?? false;", arguments: ["room": conversation], in: nil, in: .page) { [weak self] result in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if case .success(let ended) = result, ended as? Bool == true { return }
+                    self.notice = "The page’s End call control did not respond. Check the call in ChatGPT."
+                }
+            }
+        }
         voiceConnected = false; voiceLevel = 0; _ = speechActivity.update(connected: false, level: 0)
         microphoneMuted = false; microphoneChangePending = false
+        if visiblePanels.isEmpty { scheduleIdleUnload() }
     }
     func receiveVoice(_ value: DotVoiceSnapshot) {
         if voiceConnected && !value.connected && !voiceEnding { notice = "The call ended or the connection dropped. Your conversation is still here; start a new call when ready." }
@@ -476,7 +524,7 @@ final class DotConnection: NSObject {
             return
         }
         if value.connected && voiceStarting {
-            voiceTimeout?.cancel(); voiceHeartbeat?.cancel(); voiceStarting = false
+            voiceTimeout?.cancel(); voiceStarting = false
             showConnection = false; notice = nil
         }
         if value.connected && !voiceConnected {

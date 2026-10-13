@@ -24,13 +24,12 @@ struct DotOnboarding: View {
                     Button("Connect ChatGPT", action: connection.beginSetup)
                         .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.large)
                     Button("See how it works") { connection.showTour = true }.buttonStyle(.plain)
-                    Text("Requires access to ChatGPT Dots. You’ll briefly see ChatGPT’s secure sign-in page, then return automatically to the glass panel. Microphone permission is requested only when you start a call.")
+                    Text("Requires access to ChatGPT Dots. Email sign-in opens here. Some provider sign-in flows, especially Google, may reject embedded browsers or require a popup; if sign-in stalls, use ChatGPT in your browser. Microphone permission is requested only when you start a call.")
                         .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                 }.padding(22).frame(maxWidth: .infinity, minHeight: geometry.size.height)
             }.background(RadialGradient(colors: [theme.colors[0].opacity(0.12), .clear], center: .top, startRadius: 0, endRadius: 380))
         }.clipShape(RoundedRectangle(cornerRadius: 28))
-            .sheet(isPresented: $connection.showTour) { DotTour(connection: connection).frame(width: 440, height: 640) }
     }
 }

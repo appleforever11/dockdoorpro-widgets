@@ -10,7 +10,6 @@ struct DotPanel: View {
     @State private var panelIdentity = UUID()
     @State private var showDotPicker = false
     @State private var glassOpacity = WidgetDefaults.double(key: "glassOpacity", widgetId: "dot-glass", default: 0.68)
-    @State private var showAppearance = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -20,7 +19,12 @@ struct DotPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if connection.needsSetup {
+            if showDotPicker {
+                DotPicker(connection: connection) { showDotPicker = false }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if connection.showTour {
+                DotTour(connection: connection)
+            } else if connection.needsSetup {
                 DotOnboarding(connection: connection)
             } else {
             ZStack {
@@ -39,14 +43,11 @@ struct DotPanel: View {
         .modifier(DotGlassSurface(opacity: panelGlassOpacity))
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(.white.opacity(0.13), lineWidth: 0.7).allowsHitTesting(false))
-        .sheet(isPresented: $showDotPicker) { DotPicker(connection: connection) }
-        .background {
-            TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
-                Color.clear.onChange(of: timeline.date) { _, _ in connection.tick(); selectedTheme = DotTheme.current; glassOpacity = WidgetDefaults.double(key: "glassOpacity", widgetId: "dot-glass", default: 0.68) }
-            }.allowsHitTesting(false).accessibilityHidden(true)
+        .onAppear {
+            selectedTheme = DotTheme.current
+            glassOpacity = WidgetDefaults.double(key: "glassOpacity", widgetId: "dot-glass", default: 0.68)
+            connection.panelAppeared(panelIdentity)
         }
-        .task { connection.connect() }
-        .onAppear { connection.panelAppeared(panelIdentity) }
         .onDisappear { connection.panelDisappeared(panelIdentity) }
     }
 
@@ -77,20 +78,14 @@ struct DotPanel: View {
                               destructive: connection.microphoneMuted, action: connection.toggleMicrophone)
                     .disabled(connection.microphoneChangePending)
             }
-            DotIconButton(title: "Appearance", symbol: "paintpalette.fill", prominent: true) { showAppearance.toggle() }
-                .popover(isPresented: $showAppearance, arrowEdge: .bottom) {
-                    DotAppearancePicker(theme: selectedTheme, opacity: glassOpacity)
-                }
             Menu {
-                Section("Appearance") {
-                    Button { showAppearance = true } label: { Label("Appearance…", systemImage: "paintpalette.fill") }
-                }
                 Section("Conversation") {
                     Button { showDotPicker = true } label: { Label("Choose Dot", systemImage: "circle.circle") }
                     Button(action: connection.reload) { Label("Reconnect", systemImage: "arrow.clockwise") }
                 }
                 Section("Advanced") {
                     Button(action: connection.beginSetup) { Label("Sign in again", systemImage: "person.crop.circle") }
+                    Button(action: connection.signOut) { Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right") }
                     Button(action: connection.inspectConnection) { Label("Inspect ChatGPT page", systemImage: "safari") }
                     Button(action: connection.openBrowser) { Label("Open in browser", systemImage: "arrow.up.forward.app") }
                 }
@@ -200,6 +195,9 @@ struct DotPanel: View {
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             HStack {
                 Button("Back to setup", action: connection.cancelSetup)
+                if connection.authPopup != nil {
+                    Button("Close sign-in window") { connection.authPopup = nil }
+                }
                 Spacer()
                 if connection.pendingToken != nil {
                     Button("I’ve checked delivery", action: connection.confirmDeliveryChecked)

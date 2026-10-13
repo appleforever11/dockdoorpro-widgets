@@ -10,6 +10,7 @@ struct DotRing: View {
     private var state: VoiceOrbState {
         if phase == .speaking { return .speaking }
         if phase == .inCall { return .listening }
+        if phase == .connecting { return .listening }
         return .idle
     }
     var body: some View {
