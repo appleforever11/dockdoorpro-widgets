@@ -11,7 +11,7 @@ final class DotGlassPlugin: WidgetPlugin, DockDoorWidgetProvider {
     var supportedOrientations: [WidgetOrientation] { [.horizontal, .vertical] }
     func settingsSchema() -> [WidgetSetting] {
         [
-            .picker(key: "theme", label: "Orb glow", options: DotTheme.allCases.map(\.rawValue), defaultValue: "Arctic"),
+            .picker(key: "theme", label: "Theme", options: DotTheme.allCases.map(\.rawValue), defaultValue: "Arctic"),
             .slider(key: "glassOpacity", label: "Glass opacity", range: 0.2...1, step: 0.05, defaultValue: 0.68)
         ]
     }

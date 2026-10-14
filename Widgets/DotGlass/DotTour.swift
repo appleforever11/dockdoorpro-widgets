@@ -12,7 +12,7 @@ struct DotTour: View {
     private let details = [
         "Write at the bottom to message your real Dot. Check the conversation if delivery is uncertain.",
         "The phone button starts a real Dot call. Use the microphone button to mute or unmute. Calls continue when the panel hides; reopen it to end the call.",
-        "Preview six themes with the palette button. Save your choice in DockDoor Settings → Stacks → Dot Glass. Your orb, dock preview and chat bubbles stay in sync.",
+        "Choose from seven themes in DockDoor Settings → Stacks → Dot Glass. Your orb, panel glass and chat bubbles stay in sync.",
         "Unread replies add a badge to the dock tile. Turn on optional macOS notifications in the menu. Alerts keep message text private."]
     var body: some View {
         VStack(spacing: 16) {
@@ -69,7 +69,7 @@ struct DotTour: View {
                     RadialGradient(colors: [palette[1].opacity(0.12), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 280)
                 }.allowsHitTesting(false)
             }
-            .modifier(DotGlassSurface())
+            .modifier(DotGlassSurface(theme: selectedTheme))
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(.white.opacity(0.18), lineWidth: 0.7).allowsHitTesting(false))
             .tint(palette[0])

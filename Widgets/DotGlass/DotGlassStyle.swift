@@ -3,6 +3,7 @@ import SwiftUI
 struct DotGlassSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduced
     var opacity: Double = 0.68
+    var theme: DotTheme = .arctic
 
     private var level: Double { min(1, max(0.2, opacity)) }
 
@@ -21,12 +22,15 @@ struct DotGlassSurface: ViewModifier {
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             shape.fill(.clear)
-                .glassEffect(.regular.tint(Color.primary.opacity(0.1)), in: shape)
+                .glassEffect(.regular.tint(theme.glassTint?.opacity(0.7) ?? Color.primary.opacity(0.1)), in: shape)
+                .overlay { shape.fill(theme.glassTint?.opacity(0.36) ?? .clear) }
         } else {
             shape.fill(.ultraThinMaterial)
+                .overlay { shape.fill(theme.glassTint?.opacity(0.22) ?? .clear) }
         }
         #else
         shape.fill(.ultraThinMaterial)
+            .overlay { shape.fill(theme.glassTint?.opacity(0.22) ?? .clear) }
         #endif
     }
 }

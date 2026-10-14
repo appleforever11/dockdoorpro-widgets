@@ -38,9 +38,9 @@ struct DotPanel: View {
             if connection.showConnection && !connection.showTour { connectionFooter }
             }
         }
-        .environment(\.dotTheme, selectedTheme)
         .environment(\.dotGlassOpacity, panelGlassOpacity)
-        .modifier(DotGlassSurface(opacity: panelGlassOpacity))
+        .modifier(DotGlassSurface(opacity: panelGlassOpacity, theme: selectedTheme))
+        .environment(\.dotTheme, selectedTheme)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(.white.opacity(0.13), lineWidth: 0.7).allowsHitTesting(false))
         .onAppear {
@@ -176,7 +176,7 @@ struct DotPanel: View {
                 Image(systemName: connection.pendingToken == nil ? "arrow.up" : "ellipsis")
                     .font(.callout.weight(.semibold)).frame(width: 32, height: 32)
                     .foregroundStyle(connection.canSend ? .white : .secondary)
-                    .background(connection.canSend ? Color.blue : Color.primary.opacity(0.06), in: Circle())
+                    .background(connection.canSend ? (selectedTheme == .goldenGate ? selectedTheme.messageColor : .blue) : Color.primary.opacity(0.06), in: Circle())
             }.buttonStyle(.plain).disabled(!connection.canSend).help("Send message").accessibilityLabel("Send message").keyboardShortcut(.return, modifiers: .command)
         }.padding(8)
             .background {

@@ -4,6 +4,7 @@ import DockDoorWidgetSDK
 enum DotTheme: String, CaseIterable {
     case arctic = "Arctic", aurora = "Aurora", orchid = "Orchid"
     case ember = "Ember", rose = "Rose", solar = "Solar"
+    case goldenGate = "Golden Gate"
 
     static var current: DotTheme { DotTheme(rawValue: WidgetDefaults.string(key: "theme", widgetId: "dot-glass", default: "Arctic")) ?? .arctic }
 
@@ -15,6 +16,7 @@ enum DotTheme: String, CaseIterable {
         case .ember: return [.init(red: 1, green: 0.43, blue: 0.17), .init(red: 0.78, green: 0.12, blue: 0.23), .init(red: 1, green: 0.83, blue: 0.44)]
         case .rose: return [.init(red: 1, green: 0.38, blue: 0.66), .init(red: 0.65, green: 0.18, blue: 0.48), .init(red: 1, green: 0.8, blue: 0.89)]
         case .solar: return [.init(red: 0.98, green: 0.8, blue: 0.2), .init(red: 0.8, green: 0.46, blue: 0.08), .init(red: 1, green: 0.98, blue: 0.67)]
+        case .goldenGate: return [.init(red: 0.94, green: 0.72, blue: 0.31), .init(red: 0.65, green: 0.39, blue: 0.23), .init(red: 0.98, green: 0.92, blue: 0.74)]
         }
     }
 
@@ -27,9 +29,14 @@ enum DotTheme: String, CaseIterable {
         case .ember: return Color(red: 0.49, green: 0.24, blue: 0.14)
         case .rose: return Color(red: 0.47, green: 0.21, blue: 0.34)
         case .solar: return Color(red: 0.40, green: 0.31, blue: 0.10)
+        case .goldenGate: return Color(red: 0.34, green: 0.27, blue: 0.23)
         }
     }
 
+    /// Blue-gray dock glass from the Golden Gate reference.
+    var glassTint: Color? {
+        self == .goldenGate ? Color(red: 0.36, green: 0.44, blue: 0.52) : nil
+    }
 }
 
 
