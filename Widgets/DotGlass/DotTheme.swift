@@ -33,6 +33,18 @@ enum DotTheme: String, CaseIterable {
         }
     }
 
+    var accentColor: Color {
+        switch self {
+        case .arctic: return Color(red: 0.12, green: 0.48, blue: 0.78)
+        case .aurora: return Color(red: 0.08, green: 0.53, blue: 0.39)
+        case .orchid: return Color(red: 0.46, green: 0.27, blue: 0.73)
+        case .ember: return Color(red: 0.78, green: 0.28, blue: 0.13)
+        case .rose: return Color(red: 0.70, green: 0.25, blue: 0.47)
+        case .solar: return Color(red: 0.65, green: 0.42, blue: 0.08)
+        case .goldenGate: return Color(red: 0.52, green: 0.35, blue: 0.22)
+        }
+    }
+
     /// Blue-gray dock glass from the Golden Gate reference.
     var glassTint: Color? {
         self == .goldenGate ? Color(red: 0.36, green: 0.44, blue: 0.52) : nil

@@ -33,24 +33,39 @@ struct DotCompact: View {
     @Environment(\.dotTheme) private var selectedTheme
     private var themeName: String { selectedTheme.rawValue }
     private var side: CGFloat { max(20, min(size.width, size.height)) }
+    private var extendedVertical: Bool { vertical && size.height > size.width * 1.5 }
+    private var status: String {
+        if connection.voiceConnected { return connection.microphoneMuted ? "Call · muted" : "Call · mic on" }
+        if connection.voiceStarting { return "Calling…" }
+        if !connection.ready && !connection.loading && !connection.needsSetup { return "Open to connect" }
+        return connection.connectionState.rawValue
+    }
+    private var ring: some View {
+        DotRing(phase: connection.phase,
+                diameter: (extendedVertical ? min(size.width, size.height * 0.58) : side) * WidgetMetrics.contentScale,
+                audioLevel: connection.voiceLevel)
+    }
     var body: some View {
-        HStack(spacing: 6) {
-        DotRing(phase: connection.phase, diameter: side * WidgetMetrics.contentScale, audioLevel: connection.voiceLevel)
-        .overlay(alignment: .topTrailing) {
-            if connection.unreadCount > 0 {
-                Text(connection.unreadCount > 99 ? "99+" : "\(connection.unreadCount)")
-                    .font(.system(size: max(10, side * 0.18), weight: .bold, design: .rounded))
-                    .foregroundStyle(.white).padding(4)
-                    .background(.red, in: Capsule())
-                    .overlay(Capsule().strokeBorder(.white.opacity(0.8), lineWidth: 1))
-                    .accessibilityLabel("\(connection.unreadCount) unread messages")
+        Group {
+            if extendedVertical {
+                VStack(spacing: 6) {
+                    ring
+                    Text(status)
+                        .font(.system(size: max(10, size.width * 0.15), weight: .medium))
+                        .lineLimit(2).multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                HStack(spacing: 6) {
+                    ring
+                    if !vertical && size.width > side * 1.6 {
+                        Text(status)
+                            .font(.system(size: max(10, side * 0.2), weight: .medium))
+                            .lineLimit(1)
+                    }
+                }
             }
-        }
-        if !vertical && size.width > side * 1.6 {
-            Text(connection.voiceConnected ? (connection.microphoneMuted ? "Call · muted" : "Call · mic on") : connection.voiceStarting ? "Calling…" : !connection.ready && !connection.loading && !connection.needsSetup ? "Open to connect" : connection.connectionState.rawValue)
-                .font(.system(size: max(10, side * 0.2), weight: .medium))
-                .lineLimit(1)
-        }
         }
         .contentShape(Rectangle())
         .overlay(alignment: .bottomTrailing) {
@@ -63,6 +78,6 @@ struct DotCompact: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Dot Glass, \(themeName). \(connection.phase.rawValue). \(connection.microphoneMuted ? "Microphone muted." : "") \(connection.unreadCount) unread messages. Open conversation panel.")
+        .accessibilityLabel("Dot Glass, \(themeName). \(status). Open conversation panel.")
     }
 }

@@ -92,16 +92,7 @@ struct DotPanel: View {
                     Button(action: connection.inspectConnection) { Label("Inspect ChatGPT page", systemImage: "safari") }
                     Button(action: connection.openBrowser) { Label("Open in browser", systemImage: "arrow.up.forward.app") }
                 }
-                Section("Notifications") {
-                    if connection.notificationsEnabled {
-                        Button("Turn off notifications", action: connection.disableNotifications)
-                    } else {
-                        Button("Enable native notifications", action: connection.enableNotifications)
-                    }
-                    Text("Delivered by DockDoor Pro · message text stays private")
-                }
                 Section("Help") {
-                    Button { if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") { NSWorkspace.shared.open(url) } } label: { Label("Notification permissions", systemImage: "bell") }
                     Button(action: connection.openMicrophoneSettings) { Label("Microphone permissions", systemImage: "mic") }
                     Button { connection.showTour = true } label: { Label("Quick tour", systemImage: "sparkles") }
                     Button(action: connection.reload) { Label("Reconnect", systemImage: "arrow.clockwise") }
@@ -176,7 +167,7 @@ struct DotPanel: View {
                 Image(systemName: connection.pendingToken == nil ? "arrow.up" : "ellipsis")
                     .font(.callout.weight(.semibold)).frame(width: 32, height: 32)
                     .foregroundStyle(connection.canSend ? .white : .secondary)
-                    .background(connection.canSend ? (selectedTheme == .goldenGate ? selectedTheme.messageColor : .blue) : Color.primary.opacity(0.06), in: Circle())
+                    .background(connection.canSend ? selectedTheme.accentColor : Color.primary.opacity(0.06), in: Circle())
             }.buttonStyle(.plain).disabled(!connection.canSend).help("Send message").accessibilityLabel("Send message").keyboardShortcut(.return, modifiers: .command)
         }.padding(8)
             .background {

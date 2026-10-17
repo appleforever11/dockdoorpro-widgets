@@ -8,12 +8,11 @@ struct DotTour: View {
     private var themeName: String { selectedTheme.rawValue }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var palette: [Color] { (DotTheme(rawValue: themeName) ?? .arctic).colors }
-    private let titles = ["Your Dot. A little closer.", "Talk naturally.", "Make it yours.", "Never miss a reply."]
+    private let titles = ["Your Dot. A little closer.", "Talk naturally.", "Make it yours."]
     private let details = [
         "Write at the bottom to message your real Dot. Check the conversation if delivery is uncertain.",
         "The phone button starts a real Dot call. Use the microphone button to mute or unmute. Calls continue when the panel hides; reopen it to end the call.",
-        "Choose from seven themes in DockDoor Settings → Stacks → Dot Glass. Your orb, panel glass and chat bubbles stay in sync.",
-        "Unread replies add a badge to the dock tile. Turn on optional macOS notifications in the menu. Alerts keep message text private."]
+        "Choose from seven themes in DockDoor Settings → Stacks → Dot Glass. Your orb, panel glass and chat bubbles stay in sync."]
     var body: some View {
         VStack(spacing: 16) {
             Spacer(minLength: 8)
@@ -44,21 +43,17 @@ struct DotTour: View {
                     }
                 }
                 Text(themeName).font(.caption).foregroundStyle(.secondary)
-            } else {
-                Label("3 unread messages", systemImage: "bell.badge.fill").font(.headline)
-                    .padding(20).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
-                Text("Notifications are optional. Example badge shown.").font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             HStack(spacing: 7) {
-                ForEach(0..<4) { index in Capsule().fill(index == page ? Color.primary : Color.secondary.opacity(0.25)).frame(width: index == page ? 22 : 6, height: 6) }
-            }.accessibilityLabel("Step \(page + 1) of 4")
+                ForEach(0..<3) { index in Capsule().fill(index == page ? Color.primary : Color.secondary.opacity(0.25)).frame(width: index == page ? 22 : 6, height: 6) }
+            }.accessibilityLabel("Step \(page + 1) of 3")
             HStack {
                 Button("Skip tour", action: connection.finishTour).buttonStyle(.plain).foregroundStyle(.secondary)
                 Spacer()
                 if page > 0 { Button("Back") { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { page -= 1 } } }
-                Button(page == 3 ? "Start chatting" : "Continue") {
-                    if page == 3 { connection.finishTour() }
+                Button(page == 2 ? "Start chatting" : "Continue") {
+                    if page == 2 { connection.finishTour() }
                     else { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { page += 1 } }
                 }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
             }

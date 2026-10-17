@@ -34,7 +34,6 @@ struct DotTranscript: View {
                 .onPreferenceChange(DotBottomKey.self) { bottom in
                     atBottom = bottom <= geometry.size.height + 35
                     if atBottom { unread = false }
-                    connection.transcriptPositionChanged(atBottom: atBottom)
                 }
                 .onChange(of: connection.messages) { _, _ in
                     if atBottom { scroll(proxy) } else { unread = true }

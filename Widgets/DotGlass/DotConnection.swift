@@ -9,28 +9,6 @@ import WebKit
 final class DotConnection: NSObject {
     @ObservationIgnored let callLog = Logger(subsystem: "dot-glass", category: "Call")
     var messages: [DotMessage] = []
-    private var unreadState = DotUnread()
-    var unreadCount = 0
-    var transcriptAtBottom = false
-    @ObservationIgnored private lazy var notifications = DotNotifications(defaults: defaults)
-    var notificationsEnabled = false
-
-    func enableNotifications() {
-        Task { @MainActor in
-            notificationsEnabled = await notifications.enable()
-            if !notificationsEnabled {
-                notice = "Allow notifications for DockDoor Pro in System Settings → Notifications, then try again."
-            }
-        }
-    }
-    func disableNotifications() { notifications.disable(); notificationsEnabled = false }
-    func markMessagesRead() {
-        unreadState.markRead(); unreadCount = 0; notifications.clear()
-    }
-    func transcriptPositionChanged(atBottom: Bool) {
-        transcriptAtBottom = atBottom
-        if atBottom && !visiblePanels.isEmpty && !showTour && !showConnection { markMessagesRead() }
-    }
     var name = "Your dot"
     var ready = false
     var loading = false
@@ -81,7 +59,6 @@ final class DotConnection: NSObject {
     private(set) var conversation = ""
     private var timeout: Task<Void, Never>?
     private var hydrated = false
-    private var seen = Set<String>()
     private var submittedDraft: String?
     private var handler: DotScriptHandler!
     private let defaults: UserDefaults
@@ -94,7 +71,6 @@ final class DotConnection: NSObject {
         self.defaults = defaults
         self.websiteDataStore = WKWebsiteDataStore(forIdentifier: UUID(uuidString: "1D9FD40A-8C44-4936-BFAD-08608F59DA71")!)
         super.init()
-        notificationsEnabled = defaults.bool(forKey: "dot-glass.notifications")
         if let data = defaults.data(forKey: "dot-glass.directory"),
            let saved = try? JSONDecoder().decode(DotDirectory.self, from: data) {
             for profile in saved.profiles { directory.remember(url: profile.url, name: profile.name) }
@@ -139,7 +115,7 @@ final class DotConnection: NSObject {
             }
         }
         let now = Date()
-        let refreshTranscript = !visiblePanels.isEmpty && now.timeIntervalSince(lastTranscriptTick) >= 15
+        let refreshTranscript = !visiblePanels.isEmpty && now.timeIntervalSince(lastTranscriptTick) >= 30
         guard refreshTranscript || voiceStarting || voiceConnected else { return }
         if textActivityUntil != .distantPast && now >= textActivityUntil { textActivityUntil = .distantPast }
         lastTick = now; tickInFlight = true
@@ -165,7 +141,10 @@ final class DotConnection: NSObject {
     var canSend: Bool { ready && !deliveryUncertain && pendingToken == nil && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.utf16.count <= 12000 }
 
     func connect() {
-        guard webView.url?.host != "chatgpt.com" else { return }
+        // An auth provider may own this view while an emailed code is fetched.
+        // Only an empty or deliberately unloaded page needs its saved Dot loaded.
+        guard !webView.isLoading, !signInInProgress,
+              webView.url == nil || webView.url?.absoluteString == "about:blank" else { return }
         _ = recovery
         loadSaved()
     }
@@ -227,7 +206,7 @@ final class DotConnection: NSObject {
         }
         if webView.url == nil && conversation.isEmpty { beginSetup(); return }
         automaticHandoff = true
-        hydrated = false; unreadState.reset(); unreadCount = 0; ready = false; loading = true; notice = nil
+        hydrated = false; ready = false; loading = true; notice = nil
         recovery.begin()
         showConnection = false
         webView.load(URLRequest(url: DotURLPolicy.conversation(conversation) ?? DotURLPolicy.dotHome))
@@ -286,7 +265,7 @@ final class DotConnection: NSObject {
         if !incoming.isEmpty && incoming != conversation {
             if targetConversation == nil { drafts[conversation] = draft; draft = drafts[incoming] ?? "" }
             targetConversation = nil
-            hydrated = false; seen.removeAll(); unreadState.reset(); unreadCount = 0
+            hydrated = false
             if pendingToken != nil { notice = "The conversation changed. Check delivery before sending again." }
             pendingToken = nil; timeout?.cancel(); deliveryUncertain = false
             conversation = incoming
@@ -318,19 +297,11 @@ final class DotConnection: NSObject {
             textActivityUntil = Date().addingTimeInterval(2)
         }
         messages = snapshot.messages
-        let reading = !visiblePanels.isEmpty && transcriptAtBottom && !showConnection && !showTour
-        let newReplies = unreadState.update(room: incoming, messages: snapshot.messages,
-                                            typing: snapshot.typing, reading: reading)
-        unreadCount = unreadState.count
-        if reading { notifications.clear() }
-        else if newReplies > 0 { notifications.notify() }
         if let token = pendingToken, snapshot.acknowledgement == token {
             pendingToken = nil; timeout?.cancel(); deliveryUncertain = false
             if draft == submittedDraft { draft = "" }
             submittedDraft = nil; notice = nil
         }
-        seen.formUnion(snapshot.messages.map(\.id))
-        if seen.count > 500 { seen = Set(snapshot.messages.map(\.id)) }
         hydrated = true
     }
 
@@ -444,14 +415,12 @@ final class DotConnection: NSObject {
         visiblePanels.insert(identity)
         connect()
         webView.evaluateJavaScript("window.__dotGlass?.setActive(true)", completionHandler: nil)
-        if transcriptAtBottom && !showTour && !showConnection { markMessagesRead() }
         callLog.notice("Conversation panel appeared")
     }
 
     func panelDisappeared(_ identity: UUID) {
         visiblePanels.remove(identity)
         if visiblePanels.isEmpty {
-            transcriptAtBottom = false
             webView.evaluateJavaScript("window.__dotGlass?.setActive(false)", completionHandler: nil)
             scheduleIdleUnload()
         }
@@ -465,11 +434,18 @@ final class DotConnection: NSObject {
         idleUnload = Task { [weak self] in
             try? await Task.sleep(for: .seconds(180))
             guard !Task.isCancelled, let self, self.visiblePanels.isEmpty,
-                  !self.voiceStarting, !self.voiceConnected, self.pendingToken == nil else { return }
+                  !self.voiceStarting, !self.voiceConnected, self.pendingToken == nil,
+                  !self.webView.isLoading, !self.signInInProgress else { return }
             self.webView.stopLoading()
             self.webView.loadHTMLString("", baseURL: nil)
             self.ready = false; self.loading = false; self.typing = false
         }
+    }
+
+    private var signInInProgress: Bool {
+        if authPopup != nil || requestedSignIn || (completingSetup && showConnection) { return true }
+        guard let url = webView.url else { return false }
+        return url.absoluteString != "about:blank" && url.host != "chatgpt.com"
     }
 
     func signOut() {
@@ -487,7 +463,6 @@ final class DotConnection: NSObject {
                 self.defaults.removeObject(forKey: "dot-glass.conversationURL")
                 self.defaults.removeObject(forKey: "dot-glass.directory")
                 self.directory = DotDirectory(); self.conversation = ""; self.messages = []
-                self.unreadState.reset(); self.unreadCount = 0; self.notifications.clear()
                 self.ready = false; self.loading = false; self.needsSetup = true
                 self.showConnection = false; self.showTour = false; self.notice = nil
             }
@@ -497,6 +472,7 @@ final class DotConnection: NSObject {
     func stopAudio() {
         callLog.notice("Stopping call: starting=\(self.voiceStarting) connected=\(self.voiceConnected)")
         callGeneration = UUID()
+        let endingGeneration = callGeneration
         voiceEnding = true
         let wasStarting = voiceStarting
         voiceTimeout?.cancel(); voiceHeartbeat?.cancel(); voiceStarting = false
@@ -506,9 +482,11 @@ final class DotConnection: NSObject {
         if voiceConnected || hadCapture || wasStarting {
             webView.callAsyncJavaScript("return window.__dotGlass?.endCall(room) ?? false;", arguments: ["room": conversation], in: nil, in: .page) { [weak self] result in
                 Task { @MainActor in
-                    guard let self else { return }
+                    guard let self, self.callGeneration == endingGeneration else { return }
                     if case .success(let ended) = result, ended as? Bool == true { return }
-                    self.notice = "The page’s End call control did not respond. Check the call in ChatGPT."
+                    self.notice = "The page’s End call control did not respond. Reloading ChatGPT to end the call."
+                    self.ready = false; self.loading = true
+                    self.webView.reload()
                 }
             }
         }

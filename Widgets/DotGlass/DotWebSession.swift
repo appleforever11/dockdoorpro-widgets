@@ -15,19 +15,20 @@ extension DotConnection: WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        guard webView === self.webView else { return }
         loading = true
         ready = false
         recovery.begin()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView === self.webView else { return }
         loading = false
         if let targetConversation, webView.url?.absoluteString != targetConversation {
             self.targetConversation = nil
             notice = "ChatGPT opened a different page. Check access to the selected Dot."
             showConnection = false
         }
-        guard webView === self.webView else { return }
         // Navigation is transport; only explicit sign-in or Advanced actions expose it.
         webView.evaluateJavaScript(DotPageAdapter.source, completionHandler: nil)
         webView.evaluateJavaScript("window.__dotGlass?.setActive(\(isPanelVisible));", completionHandler: nil)
@@ -35,15 +36,20 @@ extension DotConnection: WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        guard webView === self.webView else { return }
         fail(error)
     }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { fail(error) }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard webView === self.webView else { return }
+        fail(error)
+    }
     private func fail(_ error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
         loading = false; ready = false; typing = false; mediaPlaying = false
         notice = "ChatGPT couldn’t load. Check your connection, then reconnect."
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard webView === self.webView else { return }
         loading = false; ready = false; typing = false; mediaPlaying = false
         notice = "The connection paused. Reconnect to continue; your draft is still here."
         stopAudio()
@@ -64,6 +70,7 @@ extension DotConnection: WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
                  initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
                  decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        guard webView === self.webView else { decisionHandler(.deny); return }
         callLog.notice("WebKit requested capture: starting=\(self.voiceStarting) mainFrame=\(frame.isMainFrame) microphone=\(type == .microphone)")
         guard voiceStarting, frame.isMainFrame, origin.protocol == "https", origin.host == "chatgpt.com", [0, 443].contains(origin.port), type == .microphone,
               Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") != nil else {
